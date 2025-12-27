@@ -1,3 +1,6 @@
+mod world;
+mod world_renderer;
+
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler,
@@ -127,12 +130,11 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
-    vertex_buffer: wgpu::Buffer,
-    index_buffer: wgpu::Buffer,
-    num_indices: u32,
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     camera: Camera,
+    world: world::World,
+    world_renderer: world_renderer::WorldRenderer,
 }
 
 impl State {
@@ -280,30 +282,13 @@ impl State {
             multiview_mask: None,
         });
 
-        let vertices: [[f32; 6]; 4] = [
-            [-10.0, 0.0, -10.0, 0.5, 0.5, 0.5],
-            [10.0, 0.0, -10.0, 0.5, 0.5, 0.5],
-            [10.0, 0.0, 10.0, 0.5, 0.5, 0.5],
-            [-10.0, 0.0, 10.0, 0.5, 0.5, 0.5],
-        ];
-
-        let indices: [u16; 6] = [0, 1, 2, 0, 2, 3];
-
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Index Buffer"),
-            contents: bytemuck::cast_slice(&indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
-
-        let num_indices = indices.len() as u32;
         let aspect = config.width as f32 / config.height as f32;
         let camera = Camera::new(aspect);
+
+        let mut world = world::World::new();
+        world.update(camera.position.x, camera.position.z, 4);
+
+        let world_renderer = world_renderer::WorldRenderer::new();
 
         Self {
             surface,
@@ -311,16 +296,18 @@ impl State {
             queue,
             config,
             pipeline,
-            vertex_buffer,
-            index_buffer,
-            num_indices,
             uniform_buffer,
             bind_group,
             camera,
+            world,
+            world_renderer,
         }
     }
 
     fn render(&mut self) {
+        self.world.update(self.camera.position.x, self.camera.position.z, 4);
+        self.world_renderer.update(&self.device, &self.queue, &mut self.world);
+
         let output = self.surface.get_current_texture().unwrap();
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
         let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -355,9 +342,7 @@ impl State {
 
             render_pass.set_pipeline(&self.pipeline);
             render_pass.set_bind_group(0, &self.bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            self.world_renderer.render(&mut render_pass);
         }
 
         self.queue.submit(Some(encoder.finish()));
