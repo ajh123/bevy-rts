@@ -22,8 +22,6 @@ pub struct WorldRenderer {
     index_buffer: Option<wgpu::Buffer>,
     index_count: u32,
     point_light_buffer: wgpu::Buffer,
-    bind_group: Option<wgpu::BindGroup>,
-    bind_group_layout: Option<wgpu::BindGroupLayout>,
 }
 
 fn calculate_normal(heights: &[f32], ix: usize, iz: usize) -> [f32; 3] {
@@ -46,7 +44,7 @@ fn calculate_normal(heights: &[f32], ix: usize, iz: usize) -> [f32; 3] {
 }
 
 impl WorldRenderer {
-    pub fn new(device: &wgpu::Device, uniform_buffer: &wgpu::Buffer) -> Self {
+    pub fn new(device: &wgpu::Device) -> Self {
         let max_lights = 64;
         let point_lights: Vec<PointLightGPU> = vec![PointLightGPU {
             position: [0.0, 0.0, 0.0, 0.0],
@@ -61,54 +59,11 @@ impl WorldRenderer {
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("World Renderer Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("World Renderer Bind Group"),
-            layout: &bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: point_light_buffer.as_entire_binding(),
-                },
-            ],
-        });
-
         Self {
             buffers: HashMap::new(),
             index_buffer: None,
             index_count: 0,
             point_light_buffer,
-            bind_group: Some(bind_group),
-            bind_group_layout: Some(bind_group_layout),
         }
     }
 
@@ -209,16 +164,11 @@ impl WorldRenderer {
         queue.write_buffer(&self.point_light_buffer, 0, bytemuck::cast_slice(&padded_lights));
     }
 
-    pub fn bind_group(&self) -> &wgpu::BindGroup {
-        self.bind_group.as_ref().unwrap()
-    }
-
-    pub fn bind_group_layout(&self) -> &wgpu::BindGroupLayout {
-        self.bind_group_layout.as_ref().unwrap()
+    pub fn point_light_buffer(&self) -> &wgpu::Buffer {
+        &self.point_light_buffer
     }
 
     pub fn render<'a>(&'a self, render_pass: &mut wgpu::RenderPass<'a>) {
-        render_pass.set_bind_group(0, self.bind_group(), &[]);
         for (_, buffers) in &self.buffers {
             render_pass.set_vertex_buffer(0, buffers.vertex_buffer.slice(..));
             render_pass.set_index_buffer(buffers.index_buffer.slice(..), wgpu::IndexFormat::Uint16);

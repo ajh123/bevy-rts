@@ -1,8 +1,9 @@
+mod shader;
 mod terrain_generator;
 mod world;
 mod world_renderer;
 
-use wgpu::util::DeviceExt;
+use shader::{Shader, ShaderConfig, UniformData};
 use winit::{
     application::ApplicationHandler,
     event::WindowEvent,
@@ -292,13 +293,14 @@ struct LightUniforms {
     _padding: [f32; 2],
 }
 
+impl UniformData for LightUniforms {}
+
 struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
+    shader: Shader<LightUniforms>,
     camera: Camera,
     world: world::World,
     world_renderer: world_renderer::WorldRenderer,
@@ -356,11 +358,6 @@ impl State {
         
         surface.configure(&device, &config);
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
-        });
-
         let light_uniforms = LightUniforms {
             mvp: [0f32; 16],
             light_direction: [0.5, 0.8, 0.3, 0.0],
@@ -370,79 +367,54 @@ impl State {
             _padding: [0.0, 0.0],
         };
 
-        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Uniform Buffer"),
-            contents: bytemuck::cast_slice(&[light_uniforms]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
+        let world_renderer = world_renderer::WorldRenderer::new(&device);
 
-        let world_renderer = world_renderer::WorldRenderer::new(&device, &uniform_buffer);
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Pipeline Layout"),
-            bind_group_layouts: &[world_renderer.bind_group_layout()],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[wgpu::VertexBufferLayout {
-                    array_stride: std::mem::size_of::<[f32; 13]>() as wgpu::BufferAddress,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute {
-                            offset: 0,
-                            shader_location: 0,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                            shader_location: 1,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
-                            shader_location: 2,
-                            format: wgpu::VertexFormat::Float32x3,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: (std::mem::size_of::<[f32; 3]>() * 3) as wgpu::BufferAddress,
-                            shader_location: 3,
-                            format: wgpu::VertexFormat::Float32,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>()) as wgpu::BufferAddress,
-                            shader_location: 4,
-                            format: wgpu::VertexFormat::Float32,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>() * 2) as wgpu::BufferAddress,
-                            shader_location: 5,
-                            format: wgpu::VertexFormat::Float32,
-                        },
-                        wgpu::VertexAttribute {
-                            offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>() * 3) as wgpu::BufferAddress,
-                            shader_location: 6,
-                            format: wgpu::VertexFormat::Float32,
-                        },
-                    ],
-                }],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
+        let shader_config = ShaderConfig {
+            shader_source: SHADER,
+            shader_label: Some("Shader"),
+            vertex_entry_point: "vs_main",
+            fragment_entry_point: "fs_main",
+            vertex_buffer_layouts: vec![wgpu::VertexBufferLayout {
+                array_stride: std::mem::size_of::<[f32; 13]>() as wgpu::BufferAddress,
+                step_mode: wgpu::VertexStepMode::Vertex,
+                attributes: &[
+                    wgpu::VertexAttribute {
+                        offset: 0,
+                        shader_location: 0,
+                        format: wgpu::VertexFormat::Float32x3,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
+                        shader_location: 1,
+                        format: wgpu::VertexFormat::Float32x3,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
+                        shader_location: 2,
+                        format: wgpu::VertexFormat::Float32x3,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: (std::mem::size_of::<[f32; 3]>() * 3) as wgpu::BufferAddress,
+                        shader_location: 3,
+                        format: wgpu::VertexFormat::Float32,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>()) as wgpu::BufferAddress,
+                        shader_location: 4,
+                        format: wgpu::VertexFormat::Float32,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>() * 2) as wgpu::BufferAddress,
+                        shader_location: 5,
+                        format: wgpu::VertexFormat::Float32,
+                    },
+                    wgpu::VertexAttribute {
+                        offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>() * 3) as wgpu::BufferAddress,
+                        shader_location: 6,
+                        format: wgpu::VertexFormat::Float32,
+                    },
+                ],
+            }],
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
@@ -452,15 +424,50 @@ impl State {
                 unclipped_depth: false,
                 conservative: false,
             },
-            depth_stencil: None,
             multisample: wgpu::MultisampleState {
                 count: 1,
                 mask: !0,
                 alpha_to_coverage_enabled: false,
             },
-            cache: None,
-            multiview_mask: None,
-        });
+            depth_stencil: None,
+            color_targets: vec![Some(wgpu::ColorTargetState {
+                format: config.format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            bind_group_layout_entries: vec![
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        };
+
+        let shader = Shader::new(
+            &device,
+            shader_config,
+            &light_uniforms,
+            &[wgpu::BindGroupEntry {
+                binding: 1,
+                resource: world_renderer.point_light_buffer().as_entire_binding(),
+            }],
+        );
 
         let aspect = config.width as f32 / config.height as f32;
         let camera = Camera::new(aspect);
@@ -479,8 +486,7 @@ impl State {
             device,
             queue,
             config,
-            pipeline,
-            uniform_buffer,
+            shader,
             camera,
             world,
             world_renderer,
@@ -510,7 +516,7 @@ impl State {
                 light_params: [0.3, num_lights as f32],
                 _padding: [0.0, 0.0],
             };
-            self.queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[light_uniforms]));
+            self.shader.update_uniforms(&self.queue, &light_uniforms);
             self.world_renderer.update_lights(&self.queue, &self.world.lights);
 
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -535,7 +541,8 @@ impl State {
                 occlusion_query_set: None,
             });
 
-            render_pass.set_pipeline(&self.pipeline);
+            render_pass.set_pipeline(self.shader.pipeline());
+            render_pass.set_bind_group(0, self.shader.bind_group(), &[]);
             self.world_renderer.render(&mut render_pass);
         }
 
