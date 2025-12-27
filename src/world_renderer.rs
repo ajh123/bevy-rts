@@ -1,4 +1,4 @@
-use crate::world::{World, Chunk, ChunkKey, CHUNK_SIZE, GRID_SIZE};
+use crate::world::{World, Chunk, ChunkKey, CHUNK_SIZE};
 use wgpu::util::DeviceExt;
 use std::collections::HashMap;
 
@@ -37,14 +37,13 @@ impl WorldRenderer {
         for (key, chunk) in world.chunks_iter_mut() {
             if chunk.dirty {
                 let mut vertices = Vec::with_capacity(Chunk::vertex_count() * 6);
-                let world_x = key.x as f32 * CHUNK_SIZE;
-                let world_z = key.z as f32 * CHUNK_SIZE;
-                let half_size = CHUNK_SIZE / 2.0;
+                let world_x = key.x as f32 * CHUNK_SIZE as f32;
+                let world_z = key.z as f32 * CHUNK_SIZE as f32;
 
                 for (vertex_index, &height) in chunk.heights.iter().enumerate() {
                     let (ix, iz) = Chunk::get_grid_position(vertex_index);
-                    let x = world_x - half_size + (ix as f32 / GRID_SIZE as f32) * CHUNK_SIZE;
-                    let z = world_z - half_size + (iz as f32 / GRID_SIZE as f32) * CHUNK_SIZE;
+                    let x = world_x + ix as f32;
+                    let z = world_z + iz as f32;
 
                     let checkered = ((ix + iz) % 2 == 0) as u8 as f32;
                     let color = [0.4 + 0.2 * checkered, 0.6 + 0.2 * checkered, 0.4 + 0.2 * checkered];

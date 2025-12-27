@@ -1,3 +1,4 @@
+mod terrain_generator;
 mod world;
 mod world_renderer;
 
@@ -285,7 +286,8 @@ impl State {
         let aspect = config.width as f32 / config.height as f32;
         let camera = Camera::new(aspect);
 
-        let mut world = world::World::new();
+        let terrain_generator = Box::new(terrain_generator::FlatTerrainGenerator::new(world::CHUNK_SIZE));
+        let mut world = world::World::new(terrain_generator);
         world.update(camera.position.x, camera.position.z, 4);
 
         let world_renderer = world_renderer::WorldRenderer::new();
