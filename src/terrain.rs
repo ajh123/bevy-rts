@@ -133,6 +133,27 @@ impl TerrainWorld {
         )
     }
 
+    /// Get the height at a specific world position.
+    pub fn sample_height_at(&self, world_x: f32, world_z: f32) -> f32 {
+        sample_height(&self.config, &self.perlin, world_x, world_z)
+    }
+
+    /// Convert world XZ coordinates to tile coordinates (floored to local tile indices within a chunk).
+    pub fn world_to_tile_coord(&self, world_x: f32, world_z: f32) -> IVec2 {
+        let tile_size = self.config.tile_size;
+        let x = (world_x / tile_size).floor() as i32;
+        let z = (world_z / tile_size).floor() as i32;
+        IVec2::new(x, z)
+    }
+
+    /// Get the center world position of a tile given its coordinates.
+    pub fn tile_center(&self, tile_coord: IVec2) -> Vec2 {
+        let tile_size = self.config.tile_size;
+        let x = tile_coord.x as f32 * tile_size + tile_size * 0.5;
+        let z = tile_coord.y as f32 * tile_size + tile_size * 0.5;
+        Vec2::new(x, z)
+    }
+
     pub fn build_chunk_mesh_data(&self, coord: IVec2, atlas_tile_count: f32) -> ChunkMeshData {
         let chunk_world_size = self.config.chunk_size as f32 * self.config.tile_size;
         let chunk_origin_x = coord.x as f32 * chunk_world_size;

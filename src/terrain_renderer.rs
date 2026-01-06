@@ -25,7 +25,7 @@ pub(crate) struct TerrainAtlas {
 
 #[derive(Resource, Default)]
 pub(crate) struct LoadedChunkEntities {
-    entities: HashMap<IVec2, Entity>,
+    pub(crate) entities: HashMap<IVec2, Entity>,
 }
 
 pub fn setup_terrain_renderer(

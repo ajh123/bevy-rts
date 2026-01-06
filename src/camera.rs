@@ -45,6 +45,7 @@ pub fn setup_viewer(mut commands: Commands) {
 
     commands.spawn((
         DirectionalLight {
+            illuminance: 20_000.0,
             shadows_enabled: false,
             ..default()
         },

@@ -4070,6 +4070,7 @@ dependencies = [
  "glam 0.30.9 (git+https://github.com/bitshifter/glam-rs)",
  "nalgebra",
  "parrot-rng",
+ "rand",
  "tokio",
 ]
 
