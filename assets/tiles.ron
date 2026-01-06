@@ -1,0 +1,9 @@
+(
+  tiles: [
+    (name: "water", color_srgb: (0.10, 0.25, 0.80), height_lt: -3.0),
+    (name: "sand",  color_srgb: (0.85, 0.80, 0.55), height_lt: -1.0),
+    (name: "grass", color_srgb: (0.15, 0.60, 0.20), height_lt: 3.0),
+    (name: "rock",  color_srgb: (0.45, 0.45, 0.50), height_lt: 6.0),
+    (name: "snow",  color_srgb: (0.95, 0.95, 0.98), height_lt: 1000000000.0),
+  ],
+)

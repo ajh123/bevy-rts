@@ -8,6 +8,9 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use glam::{IVec2, Vec2};
 use std::collections::HashMap;
 
+#[derive(Resource)]
+pub(crate) struct TileTypesRes(pub(crate) crate::tile_types::TileTypes);
+
 #[derive(Component)]
 pub(crate) struct Chunk {
     #[allow(dead_code)]
@@ -20,7 +23,6 @@ pub(crate) struct TerrainWorldRes(pub(crate) TerrainWorld);
 #[derive(Resource)]
 pub(crate) struct TerrainAtlas {
     material: Handle<StandardMaterial>,
-    tile_count: f32,
 }
 
 #[derive(Resource, Default)]
@@ -37,15 +39,18 @@ pub fn setup_terrain_renderer(
     commands.insert_resource(TerrainWorldRes(TerrainWorld::new(config.0.clone())));
     commands.insert_resource(LoadedChunkEntities::default());
 
-    // Tiny in-memory atlas: [water, sand, grass, rock, snow]
-    // Each "tile" in the heightmap selects one of these texels via UVs.
-    let atlas_colors = [
-        Color::srgb(0.10, 0.25, 0.80),
-        Color::srgb(0.85, 0.80, 0.55),
-        Color::srgb(0.15, 0.60, 0.20),
-        Color::srgb(0.45, 0.45, 0.50),
-        Color::srgb(0.95, 0.95, 0.98),
-    ];
+    let tile_types = crate::tile_types::TileTypes::load_from_ron_file("assets/tiles.ron")
+        .expect("failed to load tile types from assets/tiles.ron");
+    let atlas_colors: Vec<Color> = tile_types
+        .tiles
+        .iter()
+        .map(|t| {
+            let (r, g, b) = t.color_srgb;
+            Color::srgb(r, g, b)
+        })
+        .collect();
+
+    commands.insert_resource(TileTypesRes(tile_types));
 
     let atlas_tex = images.add(make_atlas_1x_n_image(&atlas_colors));
     let material = materials.add(StandardMaterial {
@@ -56,7 +61,6 @@ pub fn setup_terrain_renderer(
 
     commands.insert_resource(TerrainAtlas {
         material,
-        tile_count: atlas_colors.len() as f32,
     });
 }
 
@@ -86,6 +90,7 @@ pub fn stream_chunks(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     atlas: Res<TerrainAtlas>,
+    tiles: Res<TileTypesRes>,
     mut terrain: ResMut<TerrainWorldRes>,
     mut loaded: ResMut<LoadedChunkEntities>,
     q_viewer: Query<&Transform, With<Viewer>>,
@@ -117,6 +122,7 @@ pub fn stream_chunks(
                     &mut meshes,
                     &terrain.0,
                     &atlas,
+                    &tiles.0,
                     coord,
                 );
                 loaded.entities.insert(coord, chunk_entity);
@@ -130,10 +136,11 @@ fn spawn_chunk(
     meshes: &mut Assets<Mesh>,
     terrain: &TerrainWorld,
     atlas: &TerrainAtlas,
+    tiles: &crate::tile_types::TileTypes,
     coord: IVec2,
 ) -> Entity {
     let origin = terrain.chunk_origin_world(coord);
-    let mesh_data = terrain.build_chunk_mesh_data(coord, atlas.tile_count);
+    let mesh_data = terrain.build_chunk_mesh_data(coord, tiles);
     let mesh = mesh_from_chunk_mesh_data(mesh_data);
     let mesh_handle = meshes.add(mesh);
 

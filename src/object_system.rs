@@ -1,4 +1,4 @@
-use glam::{IVec2, Vec2};
+use glam::{IVec2, Mat4, Vec3};
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -12,29 +12,27 @@ pub(crate) struct ObjectTypeId(pub(crate) u16);
 
 #[derive(Clone, Debug)]
 pub(crate) struct ObjectTypeSpec {
-    #[allow(dead_code)]
     pub(crate) name: String,
-
-    /// OpenTTD-style polymorphism: behavior is provided by per-type callbacks.
-    pub(crate) vtable: ObjectTypeVTable,
+    /// Path relative to the Bevy asset root (the `assets/` folder).
+    pub(crate) gltf: String,
+    pub(crate) footprint_tiles: IVec2,
+    pub(crate) gltf_bounds: Option<GltfBounds>,
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ObjectTypeVTable {
-    pub(crate) footprint_tiles: fn() -> IVec2,
-    pub(crate) build_render_parts: fn(&ObjectInstance) -> Vec<ObjectRenderPart>,
+pub(crate) struct GltfBounds {
+    pub(crate) min: Vec3,
+    pub(crate) max: Vec3,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ObjectRenderPart {
-    /// Center offset relative to the object center, in tiles (x,z).
-    pub(crate) center_offset_tiles: Vec2,
-    /// Part size in tiles (x,z).
-    pub(crate) size_tiles: Vec2,
-    /// Part height in world units.
-    pub(crate) height: f32,
-    /// Extra lift from the computed terrain base.
-    pub(crate) y_offset: f32,
+impl GltfBounds {
+    pub(crate) fn size(&self) -> Vec3 {
+        self.max - self.min
+    }
+
+    pub(crate) fn center(&self) -> Vec3 {
+        (self.min + self.max) * 0.5
+    }
 }
 
 /// OpenTTD-like "spec table" for object *types*.
@@ -189,7 +187,7 @@ impl ObjectWorld {
             return Err(PlaceError::InvalidFootprint);
         };
 
-        let size_tiles = (spec.vtable.footprint_tiles)();
+        let size_tiles = spec.footprint_tiles;
         if size_tiles.x <= 0 || size_tiles.y <= 0 || size_tiles.x > 255 || size_tiles.y > 255 {
             return Err(PlaceError::InvalidFootprint);
         }
@@ -376,6 +374,7 @@ fn tile_to_chunk_local(tile: IVec2, chunk_size: i32) -> (IVec2, IVec2) {
 
 // Bevy plumbing
 use bevy::prelude::*;
+use serde::Deserialize;
 use crate::TerrainConfigRes;
 use crate::selection::TileDoubleClicked;
 
@@ -394,13 +393,37 @@ pub(crate) fn setup_object_world(mut commands: Commands, config: Res<TerrainConf
 
 pub(crate) fn setup_object_types(mut commands: Commands) {
     let mut registry = ObjectTypeRegistry::default();
-    let test_building = registry.register(ObjectTypeSpec {
-        name: "Test Building".to_string(),
-        vtable: ObjectTypeVTable {
-            footprint_tiles: test_building_footprint_tiles,
-            build_render_parts: test_building_render_parts,
-        },
-    });
+    let mut loaded_ids = Vec::new();
+
+    for def in load_object_type_defs_from_dir("assets/objects")
+        .expect("failed to load object type definitions from assets/objects")
+    {
+        let bounds = try_compute_gltf_bounds_in_parent_space(&def.gltf).ok();
+        let id = registry.register(ObjectTypeSpec {
+            name: def.name,
+            gltf: def.gltf,
+            footprint_tiles: IVec2::new(def.footprint_tiles.0, def.footprint_tiles.1),
+            gltf_bounds: bounds,
+        });
+        loaded_ids.push((id, registry.get(id).map(|s| s.name.clone()).unwrap_or_default()));
+    }
+
+    // Keep existing demo behavior: double-click toggles one specific object type.
+    // Prefer "Small House" if present, otherwise fall back to the first loaded.
+    let test_building = loaded_ids
+        .iter()
+        .find(|(_, name)| name == "Small House")
+        .map(|(id, _)| *id)
+        .or_else(|| loaded_ids.first().map(|(id, _)| *id))
+        .unwrap_or_else(|| {
+            // If no files exist, keep behavior deterministic.
+            registry.register(ObjectTypeSpec {
+                name: "MissingObjectDefs".to_string(),
+                gltf: "".to_string(),
+                footprint_tiles: IVec2::new(1, 1),
+                gltf_bounds: None,
+            })
+        });
 
     commands.insert_resource(ObjectTypesRes {
         registry,
@@ -425,15 +448,183 @@ pub(crate) fn toggle_test_object_on_double_click(
     }
 }
 
-fn test_building_footprint_tiles() -> IVec2 {
-    IVec2::new(2, 2)
+#[derive(Debug, Deserialize)]
+struct ObjectTypeDefFile {
+    name: String,
+    gltf: String,
+    footprint_tiles: (i32, i32),
 }
 
-fn test_building_render_parts(inst: &ObjectInstance) -> Vec<ObjectRenderPart> {
-    vec![ObjectRenderPart {
-        center_offset_tiles: Vec2::ZERO,
-        size_tiles: Vec2::new(inst.size_tiles.x as f32, inst.size_tiles.y as f32),
-        height: 1.5,
-        y_offset: 0.0,
-    }]
+fn load_object_type_defs_from_dir(
+    dir: impl AsRef<std::path::Path>,
+) -> Result<Vec<ObjectTypeDefFile>, String> {
+    let dir = dir.as_ref();
+    let mut defs = Vec::new();
+
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("failed to read object defs dir '{}': {e}", dir.display()))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("failed to read object defs dir entry: {e}"))?;
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("ron") {
+            continue;
+        }
+
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("failed to read object def '{}': {e}", path.display()))?;
+        let def: ObjectTypeDefFile = ron::from_str(&text)
+            .map_err(|e| format!("failed to parse object def '{}': {e}", path.display()))?;
+
+        if def.name.trim().is_empty() {
+            return Err(format!("object def '{}' has empty name", path.display()));
+        }
+        if def.gltf.trim().is_empty() {
+            return Err(format!("object def '{}' has empty gltf path", path.display()));
+        }
+        if def.footprint_tiles.0 <= 0 || def.footprint_tiles.1 <= 0 {
+            return Err(format!(
+                "object def '{}' has invalid footprint_tiles {:?}",
+                path.display(),
+                def.footprint_tiles
+            ));
+        }
+
+        defs.push(def);
+    }
+
+    Ok(defs)
+}
+
+fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfBounds, String> {
+    // Only supports JSON .gltf for now.
+    if !asset_path.to_ascii_lowercase().ends_with(".gltf") {
+        return Err("only .gltf is supported for bounds computation".to_string());
+    }
+
+    // Convert Bevy asset path (relative to assets/) into a filesystem path.
+    let fs_path = std::path::Path::new("assets").join(asset_path);
+    let text = std::fs::read_to_string(&fs_path)
+        .map_err(|e| format!("failed to read gltf '{}': {e}", fs_path.display()))?;
+
+    let doc: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("failed to parse gltf json '{}': {e}", fs_path.display()))?;
+
+    let meshes = doc
+        .get("meshes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "gltf missing 'meshes'".to_string())?;
+    let accessors = doc
+        .get("accessors")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "gltf missing 'accessors'".to_string())?;
+
+    // Find accessor indices used as POSITION for primitives.
+    let mut position_accessor_indices: Vec<usize> = Vec::new();
+    for mesh in meshes {
+        let primitives = match mesh.get("primitives").and_then(|v| v.as_array()) {
+            Some(p) => p,
+            None => continue,
+        };
+        for prim in primitives {
+            let attrs = match prim.get("attributes").and_then(|v| v.as_object()) {
+                Some(a) => a,
+                None => continue,
+            };
+            let Some(pos_idx) = attrs.get("POSITION").and_then(|v| v.as_u64()) else {
+                continue;
+            };
+            position_accessor_indices.push(pos_idx as usize);
+        }
+    }
+    if position_accessor_indices.is_empty() {
+        return Err("gltf has no POSITION accessors".to_string());
+    }
+
+    // Merge AABB across all POSITION accessors.
+    let mut local_min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+    let mut local_max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+
+    for idx in position_accessor_indices {
+        let Some(acc) = accessors.get(idx) else {
+            continue;
+        };
+        let min = acc.get("min").and_then(|v| v.as_array());
+        let max = acc.get("max").and_then(|v| v.as_array());
+        let (Some(min), Some(max)) = (min, max) else {
+            continue;
+        };
+
+        let read3 = |arr: &Vec<serde_json::Value>| -> Option<Vec3> {
+            Some(Vec3::new(
+                arr.get(0)?.as_f64()? as f32,
+                arr.get(1)?.as_f64()? as f32,
+                arr.get(2)?.as_f64()? as f32,
+            ))
+        };
+
+        let Some(min_v) = read3(min) else { continue; };
+        let Some(max_v) = read3(max) else { continue; };
+
+        local_min = local_min.min(min_v);
+        local_max = local_max.max(max_v);
+    }
+
+    if !local_min.is_finite() || !local_max.is_finite() {
+        return Err("failed to compute finite bounds from accessors".to_string());
+    }
+
+    // Apply default scene's root node matrix (if present) to get bounds in parent space.
+    let root_transform = try_read_default_scene_root_matrix(&doc).unwrap_or(Mat4::IDENTITY);
+    let (min_p, max_p) = transform_aabb(root_transform, local_min, local_max);
+
+    Ok(GltfBounds { min: min_p, max: max_p })
+}
+
+fn try_read_default_scene_root_matrix(doc: &serde_json::Value) -> Option<Mat4> {
+    let scene_index = doc.get("scene").and_then(|v| v.as_u64())? as usize;
+    let scenes = doc.get("scenes").and_then(|v| v.as_array())?;
+    let scene = scenes.get(scene_index)?;
+    let root_nodes = scene.get("nodes").and_then(|v| v.as_array())?;
+    // Handle the common case: exactly one root node with a matrix.
+    let root_idx = root_nodes.get(0)?.as_u64()? as usize;
+    let nodes = doc.get("nodes").and_then(|v| v.as_array())?;
+    let root = nodes.get(root_idx)?;
+
+    if let Some(m) = root.get("matrix").and_then(|v| v.as_array()) {
+        if m.len() == 16 {
+            let mut f = [0.0f32; 16];
+            for (i, v) in m.iter().enumerate() {
+                f[i] = v.as_f64()? as f32;
+            }
+            // glTF matrices are column-major.
+            return Some(Mat4::from_cols_array(&f));
+        }
+    }
+
+    None
+}
+
+fn transform_aabb(m: Mat4, min: Vec3, max: Vec3) -> (Vec3, Vec3) {
+    let corners = [
+        Vec3::new(min.x, min.y, min.z),
+        Vec3::new(min.x, min.y, max.z),
+        Vec3::new(min.x, max.y, min.z),
+        Vec3::new(min.x, max.y, max.z),
+        Vec3::new(max.x, min.y, min.z),
+        Vec3::new(max.x, min.y, max.z),
+        Vec3::new(max.x, max.y, min.z),
+        Vec3::new(max.x, max.y, max.z),
+    ];
+
+    let mut out_min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+    let mut out_max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+
+    for c in corners {
+        let p = m.transform_point3(c);
+        out_min = out_min.min(p);
+        out_max = out_max.max(p);
+    }
+
+    (out_min, out_max)
 }

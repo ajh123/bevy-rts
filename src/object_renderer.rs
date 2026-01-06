@@ -1,14 +1,9 @@
+use bevy::gltf::GltfAssetLabel;
 use bevy::prelude::*;
 use glam::IVec2;
 
 use crate::object_system::{ObjectTypesRes, ObjectWorldRes};
 use crate::terrain_renderer::{LoadedChunkEntities, TerrainWorldRes};
-
-#[derive(Resource)]
-pub(crate) struct ObjectRenderAssets {
-    mesh: Handle<Mesh>,
-    material: Handle<StandardMaterial>,
-}
 
 #[derive(Resource, Default)]
 pub(crate) struct LoadedObjectChunkEntities {
@@ -22,17 +17,7 @@ pub(crate) struct ObjectChunkRoot {
 
 pub(crate) fn setup_object_renderer(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
-    let material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.70, 0.15, 0.10),
-        perceptual_roughness: 1.0,
-        ..default()
-    });
-
-    commands.insert_resource(ObjectRenderAssets { mesh, material });
     commands.insert_resource(LoadedObjectChunkEntities::default());
 }
 
@@ -84,7 +69,7 @@ pub(crate) fn sync_object_chunk_roots(
 pub(crate) fn update_object_chunk_visuals(
     mut commands: Commands,
     terrain: Res<TerrainWorldRes>,
-    assets: Res<ObjectRenderAssets>,
+    asset_server: Res<AssetServer>,
     mut objects: ResMut<ObjectWorldRes>,
     types: Res<ObjectTypesRes>,
     loaded_objects: Res<LoadedObjectChunkEntities>,
@@ -113,7 +98,7 @@ pub(crate) fn update_object_chunk_visuals(
             }
         }
 
-        // Spawn render parts for each object origin tile in this chunk.
+        // Spawn one glTF scene per object origin tile in this chunk.
         let mut to_spawn = Vec::new();
         for handle in objects.0.iter_origin_objects_in_chunk(root.coord) {
             let Some(instance) = objects.0.get(handle) else {
@@ -124,6 +109,10 @@ pub(crate) fn update_object_chunk_visuals(
                 continue;
             };
 
+            if spec.gltf.trim().is_empty() {
+                continue;
+            }
+
             // Compute a conservative base height using the max height under the footprint.
             // This avoids objects clipping into sloped terrain.
             let base_h = compute_footprint_base_height(&terrain.0, instance.origin_tile, instance.size_tiles);
@@ -133,32 +122,44 @@ pub(crate) fn update_object_chunk_visuals(
             let object_center_x = origin_corner_x + (instance.size_tiles.x as f32) * tile_size * 0.5;
             let object_center_z = origin_corner_z + (instance.size_tiles.y as f32) * tile_size * 0.5;
 
-            let parts = (spec.vtable.build_render_parts)(instance);
-            for part in parts {
-                let part_center_x = object_center_x + part.center_offset_tiles.x * tile_size;
-                let part_center_z = object_center_z + part.center_offset_tiles.y * tile_size;
+            // IMPORTANT: spawned as a CHILD of the chunk root.
+            // Child transform is local to the root, so convert world->chunk-local.
+            let base_local_pos = Vec3::new(
+                object_center_x - chunk_origin.x,
+                base_h,
+                object_center_z - chunk_origin.z,
+            );
 
-                let sx = part.size_tiles.x * tile_size;
-                let sz = part.size_tiles.y * tile_size;
-                let sy = part.height;
-                let y = base_h + sy * 0.5 + part.y_offset;
+            // Auto-center + auto-scale the glTF into the tile footprint.
+            // Many downloadable models have coordinates in centimeters and far from origin,
+            // which can make them appear "invisible" (actually spawned offscreen).
+            let (extra_offset, uniform_scale) = if let Some(bounds) = spec.gltf_bounds {
+                let size = bounds.size();
+                let size_x = size.x.abs().max(1e-3);
+                let size_z = size.z.abs().max(1e-3);
+                let desired_x = (instance.size_tiles.x as f32) * tile_size;
+                let desired_z = (instance.size_tiles.y as f32) * tile_size;
+                let s = (desired_x / size_x).min(desired_z / size_z).clamp(0.0001, 1000.0);
 
-                // IMPORTANT: these are spawned as CHILDREN of the chunk root.
-                // Child transforms are local to the root, so convert world->chunk-local.
-                let local_pos = Vec3::new(part_center_x - chunk_origin.x, y, part_center_z - chunk_origin.z);
-                to_spawn.push((local_pos, Vec3::new(sx, sy, sz)));
-            }
+                let center = bounds.center();
+                let min_y = bounds.min.y;
+
+                let offset = Vec3::new(-center.x * s, -min_y * s, -center.z * s);
+                (offset, s)
+            } else {
+                (Vec3::ZERO, 1.0)
+            };
+
+            let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
+            to_spawn.push((scene_handle, base_local_pos + extra_offset, uniform_scale));
         }
 
         commands.entity(root_entity).with_children(|parent| {
-            for (pos, scale) in to_spawn.drain(..) {
+            for (scene_handle, pos, scale) in to_spawn.drain(..) {
                 parent.spawn((
-                    Mesh3d(assets.mesh.clone()),
-                    MeshMaterial3d(assets.material.clone()),
-                    Transform::from_translation(pos).with_scale(scale),
+                    SceneRoot(scene_handle),
+                    Transform::from_translation(pos).with_scale(Vec3::splat(scale)),
                     Visibility::default(),
-                    // Per-instance tint would require a custom material; keep one material for now.
-                    // Color is currently unused but kept for future expansion.
                 ));
             }
         });

@@ -56,3 +56,8 @@ This third pass was implemented entirely with the assistance of GPT-5.2 on GitHu
 
 This project is dual-licensed under the MIT License and the Apache License 2.0. See the [`LICENSE-MIT`](LICENSE-MIT) and [`LICENSE-APACHE`](LICENSE-APACHE) files for details.
 Feel free to use and modify the code as per the terms of these licenses.
+
+
+## Asset Credits
+
+- 2 Story House: (https://skfb.ly/o8Xus) by Designed By Jonathan is licensed under Creative Commons Attribution (http://creativecommons.org/licenses/by/4.0/).

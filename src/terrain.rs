@@ -154,7 +154,11 @@ impl TerrainWorld {
         Vec2::new(x, z)
     }
 
-    pub fn build_chunk_mesh_data(&self, coord: IVec2, atlas_tile_count: f32) -> ChunkMeshData {
+    pub fn build_chunk_mesh_data(
+        &self,
+        coord: IVec2,
+        tiles: &crate::tile_types::TileTypes,
+    ) -> ChunkMeshData {
         let chunk_world_size = self.config.chunk_size as f32 * self.config.tile_size;
         let chunk_origin_x = coord.x as f32 * chunk_world_size;
         let chunk_origin_z = coord.y as f32 * chunk_world_size;
@@ -222,7 +226,8 @@ impl TerrainWorld {
                 let n11 = normals_grid[(z + 1) * stride + (x + 1)];
 
                 let avg_h = (h00 + h10 + h01 + h11) * 0.25;
-                let tile_index = pick_tile_index(avg_h);
+                let tile_index = tiles.pick_tile_index(avg_h);
+                let atlas_tile_count = tiles.tile_count_f32().max(1.0);
                 let uv_u = (tile_index as f32 + 0.5) / atlas_tile_count;
                 let uv = [uv_u, 0.5];
 
@@ -280,17 +285,3 @@ fn sample_height(config: &TerrainConfig, perlin: &Perlin, world_x: f32, world_z:
     (value as f32) * config.height_scale
 }
 
-fn pick_tile_index(height: f32) -> u32 {
-    // 0..=4 maps to the atlas order: [water, sand, grass, rock, snow]
-    if height < -3.0 {
-        0
-    } else if height < -1.0 {
-        1
-    } else if height < 3.0 {
-        2
-    } else if height < 6.0 {
-        3
-    } else {
-        4
-    }
-}
