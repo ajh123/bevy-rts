@@ -324,6 +324,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy-rts"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bytemuck 1.24.0 (git+https://github.com/Lokathor/bytemuck)",
+ "glam 0.30.9 (git+https://github.com/bitshifter/glam-rs)",
+ "nalgebra",
+ "parrot-rng",
+ "rand",
+ "ron 0.12.0",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "bevy_a11y"
 version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4076,22 +4092,6 @@ name = "roxmltree"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
-
-[[package]]
-name = "rust-heightmap"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "bytemuck 1.24.0 (git+https://github.com/Lokathor/bytemuck)",
- "glam 0.30.9 (git+https://github.com/bitshifter/glam-rs)",
- "nalgebra",
- "parrot-rng",
- "rand",
- "ron 0.12.0",
- "serde",
- "serde_json",
- "tokio",
-]
 
 [[package]]
 name = "rustc-hash"

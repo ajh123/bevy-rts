@@ -1,21 +1,20 @@
-# Rust Heightmap Renderer
+# Bevy RTS
 
-This project is a simple heightmap renderer written in Rust. It renders a basic flat plane split into chunks, using `wgpu` for graphics rendering and `winit` for window management.
+A basic RTS template using Bevy engine that renders a heightmap divided into chunks, with basic camera controls and an object placement system.
 
 ## Features
 
 - Renders a flat plane divided into chunks.
-- Utilizes `wgpu` for efficient GPU rendering.
-- Window management with `winit`.
 - Basic camera controls for navigating the scene.
 - Chunk-based terrain generation with support for flat and Perlin noise-based terrains.
+- Object placement system for adding objects to the terrain.
+- Data-driven architecture for easy configuration.
 - Modular design for easy extension and modification.
 
 ## Next Steps
 
 Future improvements could include:
 - Implementing heightmap loading from image files.
-- Adding lighting and shading effects.
 - Adding texture mapping to the heightmap.
 - Incorporating GUI elements for better user interaction.
 
