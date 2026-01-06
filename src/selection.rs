@@ -1,22 +1,77 @@
 use bevy::prelude::*;
 use bevy::mesh::PrimitiveTopology;
 use bevy::asset::RenderAssetUsages;
-use glam::{IVec2, Vec2 as GVec2};
+use glam::{IVec2, Vec2 as GVec2, Vec3 as GVec3};
 use crate::camera::TopDownCamera;
 use crate::terrain_renderer::TerrainWorldRes;
 
 
-#[derive(Message, Clone, Copy, Debug)]
-pub(crate) struct TileDoubleClicked {
-    pub(crate) coord: IVec2,
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub(crate) struct CursorHitRes {
+    pub(crate) world: Option<GVec3>,
 }
 
 
+/// Update the current mouse cursor hit point against the procedural terrain heightfield.
+pub(crate) fn update_cursor_hit(
+    windows: Query<&Window>,
+    camera_q: Query<(&Camera, &GlobalTransform), With<TopDownCamera>>,
+    terrain: Res<TerrainWorldRes>,
+    mut hit: ResMut<CursorHitRes>,
+) {
+    let window = match windows.single() {
+        Ok(w) => w,
+        Err(_) => {
+            hit.world = None;
+            return;
+        }
+    };
+
+    let (camera, camera_transform) = match camera_q.single() {
+        Ok(c) => c,
+        Err(_) => {
+            hit.world = None;
+            return;
+        }
+    };
+
+    let Some(cursor_pos) = window.cursor_position() else {
+        hit.world = None;
+        return;
+    };
+
+    let ray = match camera.viewport_to_world(camera_transform, cursor_pos) {
+        Ok(r) => r,
+        Err(_) => {
+            hit.world = None;
+            return;
+        }
+    };
+
+    let Some(hit_point) = raycast_to_heightfield(&terrain.0, ray) else {
+        hit.world = None;
+        return;
+    };
+
+    hit.world = Some(GVec3::new(hit_point.x, hit_point.y, hit_point.z));
+}
+
+
+#[allow(dead_code)]
+#[derive(Message, Clone, Copy, Debug)]
+pub(crate) struct TileDoubleClicked {
+    pub(crate) tile: IVec2,
+    pub(crate) world: GVec3,
+}
+
+
+#[allow(dead_code)]
 #[derive(Resource, Default, Clone, Copy)]
 pub(crate) struct SelectedTile {
     pub(crate) coord: Option<IVec2>,
 }
 
+#[allow(dead_code)]
 #[derive(Resource, Default, Clone, Copy)]
 pub(crate) struct DoubleClickState {
     pending: Option<(IVec2, f32)>,
@@ -24,13 +79,16 @@ pub(crate) struct DoubleClickState {
     last_click_time_secs: f32,
 }
 
+#[allow(dead_code)]
 #[derive(Component)]
 pub(crate) struct SelectionHighlight;
 
+#[allow(dead_code)]
 #[derive(Component, Clone, Copy)]
 pub(crate) struct HighlightForTile(IVec2);
 
 /// Handle mouse clicks to select tiles.
+#[allow(dead_code)]
 pub(crate) fn handle_mouse_selection(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
@@ -98,11 +156,15 @@ pub(crate) fn handle_mouse_selection(
     double_click.last_click_time_secs = now;
 
     if is_double_click {
-        ev_double_clicked.write(TileDoubleClicked { coord: tile_coord });
+        ev_double_clicked.write(TileDoubleClicked {
+            tile: tile_coord,
+            world: GVec3::new(hit_point.x, hit_point.y, hit_point.z),
+        });
     }
 }
 
 /// Render the selection highlight square.
+#[allow(dead_code)]
 pub(crate) fn render_selection_highlight(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,

@@ -31,9 +31,7 @@ fn main() {
             height_scale: 8.0,
         }))
         .insert_resource(camera::TopDownCameraSettings::default())
-        .insert_resource(selection::SelectedTile::default())
-        .insert_resource(selection::DoubleClickState::default())
-        .add_message::<selection::TileDoubleClicked>()
+        .insert_resource(selection::CursorHitRes::default())
         .add_plugins(DefaultPlugins)
         .add_systems(
             Startup,
@@ -51,12 +49,16 @@ fn main() {
             (
                 camera::top_down_camera_input,
                 camera::update_top_down_camera,
-                selection::handle_mouse_selection,
-                object_system::toggle_test_object_on_double_click,
+                selection::update_cursor_hit,
+                object_system::update_interaction_mode,
+                object_system::update_placement_rotation,
+                object_system::update_hovered_object,
+                object_system::handle_build_destroy_click,
                 terrain_renderer::stream_chunks,
                 object_renderer::sync_object_chunk_roots,
+                object_renderer::update_hologram_preview,
                 object_renderer::update_object_chunk_visuals,
-                selection::render_selection_highlight,
+                object_renderer::draw_hover_highlight,
             )
                 .chain(),
         )

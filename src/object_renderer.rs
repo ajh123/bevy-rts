@@ -2,8 +2,23 @@ use bevy::gltf::GltfAssetLabel;
 use bevy::prelude::*;
 use glam::IVec2;
 
-use crate::object_system::{ObjectTypesRes, ObjectWorldRes};
+use crate::object_system::{
+    FreeformObjectWorldRes, HoveredObjectRes, InteractionMode, InteractionModeRes, ObjectTypesRes,
+    PlacementRotationRes,
+};
+use crate::selection::CursorHitRes;
 use crate::terrain_renderer::{LoadedChunkEntities, TerrainWorldRes};
+
+#[derive(Resource, Default)]
+pub(crate) struct HologramPreviewRes {
+    entity: Option<Entity>,
+}
+
+#[derive(Resource)]
+pub(crate) struct HologramMaterialsRes {
+    pub(crate) valid: Handle<StandardMaterial>,
+    pub(crate) blocked: Handle<StandardMaterial>,
+}
 
 #[derive(Resource, Default)]
 pub(crate) struct LoadedObjectChunkEntities {
@@ -17,8 +32,31 @@ pub(crate) struct ObjectChunkRoot {
 
 pub(crate) fn setup_object_renderer(
     mut commands: Commands,
+    mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.insert_resource(LoadedObjectChunkEntities::default());
+
+    let hologram_valid = materials.add(StandardMaterial {
+        base_color: Color::srgba(0.20, 0.90, 1.00, 0.35),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        cull_mode: None,
+        ..default()
+    });
+
+    let hologram_blocked = materials.add(StandardMaterial {
+        base_color: Color::srgba(1.00, 0.25, 0.25, 0.35),
+        alpha_mode: AlphaMode::Blend,
+        unlit: true,
+        cull_mode: None,
+        ..default()
+    });
+
+    commands.insert_resource(HologramMaterialsRes {
+        valid: hologram_valid,
+        blocked: hologram_blocked,
+    });
+    commands.insert_resource(HologramPreviewRes::default());
 }
 
 /// Keep object chunk roots in sync with loaded terrain chunks.
@@ -70,14 +108,14 @@ pub(crate) fn update_object_chunk_visuals(
     mut commands: Commands,
     terrain: Res<TerrainWorldRes>,
     asset_server: Res<AssetServer>,
-    mut objects: ResMut<ObjectWorldRes>,
+    mut objects: ResMut<FreeformObjectWorldRes>,
     types: Res<ObjectTypesRes>,
     loaded_objects: Res<LoadedObjectChunkEntities>,
     roots: Query<(Entity, &ObjectChunkRoot)>,
     children: Query<&Children>,
     all_entities: Query<Entity>,
 ) {
-    let tile_size = terrain.0.config.tile_size;
+    let _tile_size = terrain.0.config.tile_size;
 
     for (root_entity, root) in roots.iter() {
         let chunk_origin = terrain.0.chunk_origin_world(root.coord);
@@ -98,9 +136,9 @@ pub(crate) fn update_object_chunk_visuals(
             }
         }
 
-        // Spawn one glTF scene per object origin tile in this chunk.
+        // Spawn one glTF scene per object in this chunk.
         let mut to_spawn = Vec::new();
-        for handle in objects.0.iter_origin_objects_in_chunk(root.coord) {
+        for handle in objects.0.iter_objects_in_chunk(root.coord) {
             let Some(instance) = objects.0.get(handle) else {
                 continue;
             };
@@ -113,14 +151,12 @@ pub(crate) fn update_object_chunk_visuals(
                 continue;
             }
 
-            // Compute a conservative base height using the max height under the footprint.
-            // This avoids objects clipping into sloped terrain.
-            let base_h = compute_footprint_base_height(&terrain.0, instance.origin_tile, instance.size_tiles);
+            let base_h = terrain
+                .0
+                .sample_height_at(instance.position_world.x, instance.position_world.z);
 
-            let origin_corner_x = instance.origin_tile.x as f32 * tile_size;
-            let origin_corner_z = instance.origin_tile.y as f32 * tile_size;
-            let object_center_x = origin_corner_x + (instance.size_tiles.x as f32) * tile_size * 0.5;
-            let object_center_z = origin_corner_z + (instance.size_tiles.y as f32) * tile_size * 0.5;
+            let object_center_x = instance.position_world.x;
+            let object_center_z = instance.position_world.z;
 
             // IMPORTANT: spawned as a CHILD of the chunk root.
             // Child transform is local to the root, so convert world->chunk-local.
@@ -133,32 +169,25 @@ pub(crate) fn update_object_chunk_visuals(
             // Auto-center + auto-scale the glTF into the tile footprint.
             // Many downloadable models have coordinates in centimeters and far from origin,
             // which can make them appear "invisible" (actually spawned offscreen).
-            let (extra_offset, uniform_scale) = if let Some(bounds) = spec.gltf_bounds {
-                let size = bounds.size();
-                let size_x = size.x.abs().max(1e-3);
-                let size_z = size.z.abs().max(1e-3);
-                let desired_x = (instance.size_tiles.x as f32) * tile_size;
-                let desired_z = (instance.size_tiles.y as f32) * tile_size;
-                let s = (desired_x / size_x).min(desired_z / size_z).clamp(0.0001, 1000.0);
-
-                let center = bounds.center();
-                let min_y = bounds.min.y;
-
-                let offset = Vec3::new(-center.x * s, -min_y * s, -center.z * s);
-                (offset, s)
-            } else {
-                (Vec3::ZERO, 1.0)
-            };
 
             let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
-            to_spawn.push((scene_handle, base_local_pos + extra_offset, uniform_scale));
+            let rot = Quat::from_rotation_y(instance.yaw);
+            let rotated_offset = rot * Vec3::new(spec.render_offset.x, spec.render_offset.y, spec.render_offset.z);
+            to_spawn.push((
+                scene_handle,
+                base_local_pos + rotated_offset,
+                spec.render_scale,
+                rot,
+            ));
         }
 
         commands.entity(root_entity).with_children(|parent| {
-            for (scene_handle, pos, scale) in to_spawn.drain(..) {
+            for (scene_handle, pos, scale, rot) in to_spawn.drain(..) {
                 parent.spawn((
                     SceneRoot(scene_handle),
-                    Transform::from_translation(pos).with_scale(Vec3::splat(scale)),
+                    Transform::from_translation(pos)
+                        .with_rotation(rot)
+                        .with_scale(Vec3::splat(scale)),
                     Visibility::default(),
                 ));
             }
@@ -168,26 +197,147 @@ pub(crate) fn update_object_chunk_visuals(
     }
 }
 
-fn compute_footprint_base_height(
-    terrain: &crate::terrain::TerrainWorld,
-    origin_tile: IVec2,
-    size_tiles: IVec2,
-) -> f32 {
-    let tile_size = terrain.config.tile_size;
-    let origin_x = origin_tile.x as f32 * tile_size;
-    let origin_z = origin_tile.y as f32 * tile_size;
-
-    let mut max_h = f32::NEG_INFINITY;
-    for dz in 0..=size_tiles.y {
-        for dx in 0..=size_tiles.x {
-            let wx = origin_x + dx as f32 * tile_size;
-            let wz = origin_z + dz as f32 * tile_size;
-            let h = terrain.sample_height_at(wx, wz);
-            if h > max_h {
-                max_h = h;
-            }
+pub(crate) fn update_hologram_preview(
+    mut commands: Commands,
+    terrain: Res<TerrainWorldRes>,
+    asset_server: Res<AssetServer>,
+    types: Res<ObjectTypesRes>,
+    objects: Res<FreeformObjectWorldRes>,
+    mode: Res<InteractionModeRes>,
+    hit: Res<CursorHitRes>,
+    placement_rot: Res<PlacementRotationRes>,
+    hologram_materials: Res<HologramMaterialsRes>,
+    mut preview: ResMut<HologramPreviewRes>,
+    children: Query<&Children>,
+    mut q_materials: Query<&mut MeshMaterial3d<StandardMaterial>>,
+) {
+    // Only show hologram in build mode with a valid cursor hit.
+    let show = mode.0 == InteractionMode::Build && hit.world.is_some();
+    if !show {
+        if let Some(e) = preview.entity.take() {
+            despawn_recursive(&mut commands, &children, e);
         }
+        return;
     }
 
-    if max_h.is_finite() { max_h } else { 0.0 }
+    let Some(spec) = types.registry.get(types.test_building) else {
+        return;
+    };
+    if spec.gltf.trim().is_empty() {
+        return;
+    }
+    let Some(hit_world) = hit.world else {
+        return;
+    };
+
+    let base_h = terrain.0.sample_height_at(hit_world.x, hit_world.z);
+    let rot = Quat::from_rotation_y(placement_rot.yaw);
+    let rotated_offset = rot * Vec3::new(spec.render_offset.x, spec.render_offset.y, spec.render_offset.z);
+
+    let pos_world = Vec3::new(hit_world.x, base_h, hit_world.z) + rotated_offset;
+    let transform = Transform::from_translation(pos_world)
+        .with_rotation(rot)
+        .with_scale(Vec3::splat(spec.render_scale));
+
+    let can_place = objects
+        .0
+        .can_place_non_overlapping(&types.registry, types.test_building, hit_world);
+
+    let chosen_material = if can_place {
+        &hologram_materials.valid
+    } else {
+        &hologram_materials.blocked
+    };
+
+    let preview_entity = match preview.entity {
+        Some(e) => {
+            commands.entity(e).insert(transform);
+            e
+        }
+        None => {
+            let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
+            let e = commands
+                .spawn((SceneRoot(scene_handle), transform, Visibility::default()))
+                .id();
+            preview.entity = Some(e);
+            e
+        }
+    };
+
+    // Force hologram material on any mesh materials under the preview root.
+    // We do this every frame because glTF scenes spawn their mesh children asynchronously.
+    apply_hologram_material_recursive(
+        &children,
+        &mut q_materials,
+        preview_entity,
+        chosen_material,
+        0,
+    );
+}
+
+fn despawn_recursive(commands: &mut Commands, children: &Query<&Children>, entity: Entity) {
+    if let Ok(kids) = children.get(entity) {
+        for child in kids.iter() {
+            despawn_recursive(commands, children, child);
+        }
+    }
+    commands.entity(entity).despawn();
+}
+
+fn apply_hologram_material_recursive(
+    children: &Query<&Children>,
+    materials: &mut Query<&mut MeshMaterial3d<StandardMaterial>>,
+    entity: Entity,
+    hologram: &Handle<StandardMaterial>,
+    depth: usize,
+) {
+    if depth > 96 {
+        return;
+    }
+
+    if let Ok(mut mat) = materials.get_mut(entity) {
+        mat.0 = hologram.clone();
+    }
+
+    if let Ok(kids) = children.get(entity) {
+        for child in kids.iter() {
+            apply_hologram_material_recursive(children, materials, child, hologram, depth + 1);
+        }
+    }
+}
+
+pub(crate) fn draw_hover_highlight(
+    mut gizmos: Gizmos,
+    terrain: Res<TerrainWorldRes>,
+    hovered: Res<HoveredObjectRes>,
+    objects: Res<FreeformObjectWorldRes>,
+    types: Res<ObjectTypesRes>,
+) {
+    let Some(h) = hovered.0 else {
+        return;
+    };
+    let Some(inst) = objects.0.get(h) else {
+        return;
+    };
+    let Some(spec) = types.registry.get(inst.type_id) else {
+        return;
+    };
+
+    let r = spec.hover_radius.max(0.25);
+    let y = terrain
+        .0
+        .sample_height_at(inst.position_world.x, inst.position_world.z)
+        + 0.05;
+    let center = Vec3::new(inst.position_world.x, y, inst.position_world.z);
+
+    let segments = 32;
+    let mut prev = None;
+    for i in 0..=segments {
+        let a = (i as f32 / segments as f32) * std::f32::consts::TAU;
+        let p = center + Vec3::new(a.cos() * r, 0.0, a.sin() * r);
+        if let Some(pr) = prev {
+            gizmos.line(pr, p, Color::WHITE);
+        }
+        prev = Some(p);
+    }
 }
