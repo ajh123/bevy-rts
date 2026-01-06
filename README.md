@@ -43,6 +43,15 @@ This second pass was mostly implemented by hand, with some assistance from the G
 ![](./docs/Screenshot%202025-12-27%20132051.png)
 *Screenshot showcasing the Perlin noise-generated terrain.*
 
+### Third Pass:
+
+The third pass completely reset the entire codebase to implement a solution using the Bevy game engine:
+1. **Bevy Integration**: Rewrote the renderer using the Bevy game engine to leverage its ECS architecture and built-in rendering capabilities. This involved setting up Bevy systems, components, and resources to manage the heightmap rendering process. *(commit `aacdf31ed23cbea22fcfec941939bf6a8deb5242`)*
+2. **Camera and Controls**: Implemented a top-down camera system with basic controls for navigating the heightmap. This included setting up camera movement and zooming functionalities. *(commit `aacdf31ed23cbea22fcfec941939bf6a8deb5242`)*
+3. **Modular codebase**: Structured the codebase into separate modules for terrain generation, rendering, and camera control to enhance maintainability and extensibility. *(commit `34b4fea9e01f915b56ec4fa8352792f72f638fbc`)*
+
+This third pass was implemented entirely with the assistance of GPT-5.2 on GitHub Copilot.
+
 ## License
 
 This project is dual-licensed under the MIT License and the Apache License 2.0. See the [`LICENSE-MIT`](LICENSE-MIT) and [`LICENSE-APACHE`](LICENSE-APACHE) files for details.
