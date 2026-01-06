@@ -1,0 +1,70 @@
+use serde::Deserialize;
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TileTypesFile {
+    pub tiles: Vec<TileType>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TileType {
+    pub name: String,
+    pub color_srgb: (f32, f32, f32),
+    /// Select this tile if height < height_lt.
+    pub height_lt: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct TileTypes {
+    pub tiles: Vec<TileType>,
+}
+
+impl TileTypes {
+    pub fn load_from_ron_file(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
+        let path = path.as_ref();
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| format!("failed to read tile types file '{}': {e}", path.display()))?;
+
+        let parsed: TileTypesFile = ron::from_str(&text)
+            .map_err(|e| format!("failed to parse tile types file '{}': {e}", path.display()))?;
+
+        let tile_types = Self { tiles: parsed.tiles };
+        tile_types.validate()?;
+        Ok(tile_types)
+    }
+
+    pub fn tile_count_f32(&self) -> f32 {
+        self.tiles.len() as f32
+    }
+
+    pub fn pick_tile_index(&self, height: f32) -> u32 {
+        // Validation guarantees there's at least 1 tile.
+        for (i, t) in self.tiles.iter().enumerate() {
+            if height < t.height_lt {
+                return i as u32;
+            }
+        }
+        (self.tiles.len().saturating_sub(1)) as u32
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.tiles.is_empty() {
+            return Err("tile types file must define at least one tile".to_string());
+        }
+
+        let mut last = std::f32::NEG_INFINITY;
+        for t in &self.tiles {
+            if !t.height_lt.is_finite() {
+                return Err(format!("tile '{}' has non-finite height_lt", t.name));
+            }
+            if t.height_lt <= last {
+                return Err(format!(
+                    "tile '{}' has height_lt={} but previous tile had height_lt={} (must be strictly increasing)",
+                    t.name, t.height_lt, last
+                ));
+            }
+            last = t.height_lt;
+        }
+
+        Ok(())
+    }
+}

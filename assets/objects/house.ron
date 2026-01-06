@@ -1,0 +1,4 @@
+(
+  name: "Small House",
+  gltf: "objects/house/scene.gltf",
+)
