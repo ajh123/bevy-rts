@@ -6,6 +6,12 @@ use crate::camera::TopDownCamera;
 use crate::terrain_renderer::TerrainWorldRes;
 
 
+#[derive(Message, Clone, Copy, Debug)]
+pub(crate) struct TileDoubleClicked {
+    pub(crate) coord: IVec2,
+}
+
+
 #[derive(Resource, Default, Clone, Copy)]
 pub(crate) struct SelectedTile {
     pub(crate) coord: Option<IVec2>,
@@ -33,6 +39,7 @@ pub(crate) fn handle_mouse_selection(
     mut selected_tile: ResMut<SelectedTile>,
     time: Res<Time>,
     mut double_click: ResMut<DoubleClickState>,
+    mut ev_double_clicked: MessageWriter<TileDoubleClicked>,
 ) {
     if !mouse_buttons.just_pressed(MouseButton::Left) {
         return;
@@ -91,7 +98,7 @@ pub(crate) fn handle_mouse_selection(
     double_click.last_click_time_secs = now;
 
     if is_double_click {
-        println!("Double-clicked on tile {:?}", tile_coord);
+        ev_double_clicked.write(TileDoubleClicked { coord: tile_coord });
     }
 }
 

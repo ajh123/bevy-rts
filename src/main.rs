@@ -4,6 +4,8 @@ mod camera;
 mod terrain;
 mod terrain_renderer;
 mod selection;
+mod object_system;
+mod object_renderer;
 
 #[derive(Resource, Clone)]
 pub(crate) struct TerrainConfigRes(pub(crate) terrain::TerrainConfig);
@@ -30,23 +32,32 @@ fn main() {
         .insert_resource(camera::TopDownCameraSettings::default())
         .insert_resource(selection::SelectedTile::default())
         .insert_resource(selection::DoubleClickState::default())
+        .add_message::<selection::TileDoubleClicked>()
         .add_plugins(DefaultPlugins)
         .add_systems(
             Startup,
             (
                 camera::setup_viewer,
                 terrain_renderer::setup_terrain_renderer
+                ,
+                object_system::setup_object_world,
+                object_system::setup_object_types,
+                object_renderer::setup_object_renderer
            ),
         )
         .add_systems(
             Update,
             (
                 camera::top_down_camera_input,
-                camera::update_top_down_camera.after(camera::top_down_camera_input),
-                selection::handle_mouse_selection.after(camera::top_down_camera_input),
-                terrain_renderer::stream_chunks.after(camera::top_down_camera_input),
+                camera::update_top_down_camera,
+                selection::handle_mouse_selection,
+                object_system::toggle_test_object_on_double_click,
+                terrain_renderer::stream_chunks,
+                object_renderer::sync_object_chunk_roots,
+                object_renderer::update_object_chunk_visuals,
                 selection::render_selection_highlight,
-            ),
+            )
+                .chain(),
         )
         .run();
 }
