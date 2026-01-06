@@ -52,6 +52,31 @@ The third pass completely reset the entire codebase to implement a solution usin
 
 This third pass was implemented entirely with the assistance of GPT-5.2 on GitHub Copilot.
 
+![](./docs/Screenshot%202026-01-06%20145802.png)
+*Screenshot of the Bevy-based heightmap renderer.*
+
+### Fourth Pass:
+
+The fourth pass involved object placement and data-driven architecture:
+1. **Object Placement System**: Developed a system for placing objects on the terrain, allowing users to interactively add and manipulate objects within the heightmap environment. *(commit `1e3407902f8936a7749e6ec24ca9e2fec983b582`)*
+2. **Data-Driven Design**: Refactored the codebase to adopt a data-driven approach, enabling easier configuration and extension of terrain and object properties. *(commit `8fd6af3a801c827ce5c7b11aed64e2c1cb608259`)*
+
+This fourth pass was also implemented entirely with the assistance of GPT-5.2 on GitHub Copilot.
+
+![](./docs/Screenshot%202026-01-06%20194258.png)
+*Screenshot showcasing the object placement system.*
+
+### Fifth Pass:
+
+The fifth pass focused on implement freeform and rotational object placement:
+1. **Freeform Object Placement**: Enhanced the object placement system to allow for freeform placement of objects on the terrain, providing more flexibility in positioning. *(commit `e037a653db87e6328376a386a7556c70ada6ed19`)*
+2. **Rotational Placement**: Added functionality for rotating objects during placement, enabling users to customize the orientation of objects on the heightmap. *(commit `e037a653db87e6328376a386a7556c70ada6ed19`)*
+
+This fifth pass was again implemented entirely with the assistance of GPT-5.2 on GitHub Copilot.
+
+![](./docs/Screenshot%202026-01-06%20201904.png)
+*Screenshot demonstrating freeform and rotational object placement.*
+
 ## License
 
 This project is dual-licensed under the MIT License and the Apache License 2.0. See the [`LICENSE-MIT`](LICENSE-MIT) and [`LICENSE-APACHE`](LICENSE-APACHE) files for details.

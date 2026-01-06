@@ -1,5 +1,4 @@
 (
   name: "Small House",
   gltf: "objects/house/scene.gltf",
-  footprint_tiles: (6, 3),
 )
