@@ -1,660 +1,556 @@
-mod shader;
-mod terrain_generator;
-mod world;
-mod world_renderer;
-
-use shader::{Shader, ShaderConfig, UniformData};
-use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowId},
-};
-use nalgebra::{Matrix4, Point3, Vector3};
-use std::sync::Arc;
-
-const SHADER: &str = r#"
-struct Uniforms {
-    mvp: mat4x4<f32>,
-    light_direction: vec4<f32>,
-    light_color: vec4<f32>,
-    camera_position: vec4<f32>,
-    light_params: vec2<f32>,
-}
-
-struct PointLight {
-    position: vec4<f32>,
-    color_intensity: vec4<f32>,
-    radius: f32,
-}
-
-@group(0) @binding(0)
-var<uniform> uniforms: Uniforms;
-
-@group(0) @binding(1)
-var<storage, read> point_lights: array<PointLight>;
-
-struct VertexInput {
-    @location(0) position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) normal: vec3<f32>,
-    @location(3) metallic: f32,
-    @location(4) roughness: f32,
-    @location(5) ao: f32,
-    @location(6) subsurface: f32,
-}
-
-struct VertexOutput {
-    @builtin(position) clip_position: vec4<f32>,
-    @location(0) world_position: vec3<f32>,
-    @location(1) color: vec3<f32>,
-    @location(2) normal: vec3<f32>,
-    @location(3) metallic: f32,
-    @location(4) roughness: f32,
-    @location(5) ao: f32,
-    @location(6) subsurface: f32,
-}
-
-@vertex
-fn vs_main(
-    model: VertexInput,
-) -> VertexOutput {
-    var out: VertexOutput;
-    out.clip_position = uniforms.mvp * vec4<f32>(model.position, 1.0);
-    out.world_position = model.position;
-    out.color = model.color;
-    out.normal = normalize(model.normal);
-    out.metallic = model.metallic;
-    out.roughness = model.roughness;
-    out.ao = model.ao;
-    out.subsurface = model.subsurface;
-    return out;
-}
-
-fn distribution_ggx(N: vec3<f32>, H: vec3<f32>, roughness: f32) -> f32 {
-    let a = roughness * roughness;
-    let a2 = a * a;
-    let NdotH = max(dot(N, H), 0.0);
-    let NdotH2 = NdotH * NdotH;
-
-    let num = a2;
-    var denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = 3.14159265 * denom * denom;
-
-    return num / denom;
-}
-
-fn geometry_schlick_ggx(NdotV: f32, roughness: f32) -> f32 {
-    let r = (roughness + 1.0);
-    let k = (r * r) / 8.0;
-
-    let num = NdotV;
-    let denom = NdotV * (1.0 - k) + k;
-
-    return num / denom;
-}
-
-fn geometry_smith(N: vec3<f32>, V: vec3<f32>, L: vec3<f32>, roughness: f32) -> f32 {
-    let NdotV = max(dot(N, V), 0.0);
-    let NdotL = max(dot(N, L), 0.0);
-    let ggx2 = geometry_schlick_ggx(NdotV, roughness);
-    let ggx1 = geometry_schlick_ggx(NdotL, roughness);
-
-    return ggx1 * ggx2;
-}
-
-fn fresnel_schlick(cosTheta: f32, F0: vec3<f32>) -> vec3<f32> {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-fn calculate_point_light(world_pos: vec3<f32>, light: PointLight,
-                        N: vec3<f32>, V: vec3<f32>, F0: vec3<f32>, albedo: vec3<f32>,
-                        metallic: f32, roughness: f32, sss: f32) -> vec3<f32> {
-    let L_dir = light.position.xyz - world_pos;
-    let distance = length(L_dir);
-
-    if (distance > light.radius) {
-        return vec3<f32>(0.0);
-    }
-
-    let L_norm = normalize(L_dir);
-    let H_norm = normalize(V + L_norm);
-
-    let attenuation = 1.0 / (1.0 + 0.09 * distance + 0.032 * distance * distance);
-    var volumetric = 1.0 - (distance / light.radius);
-    volumetric = pow(volumetric, 2.0);
-
-    let L_color = light.color_intensity.xyz;
-    let L_intensity = light.color_intensity.w;
-
-    let radiance = L_color * L_intensity * attenuation;
-
-    let F = fresnel_schlick(max(dot(H_norm, V), 0.0), F0);
-    let NDF = distribution_ggx(N, H_norm, roughness);
-    let G = geometry_smith(N, V, L_norm, roughness);
-
-    let numerator = NDF * G * F;
-    let denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L_norm), 0.0) + 0.0001;
-    let specular = numerator / denominator;
-
-    let kS = F;
-    var kD = vec3<f32>(1.0) - kS;
-    kD *= 1.0 - metallic;
-
-    let NdotL = max(dot(N, L_norm), 0.0);
-
-    var indirect = vec3<f32>(0.0);
-    if (sss > 0.01 && NdotL < 0.0) {
-        indirect = L_color * L_intensity * attenuation * sss * 0.3 * abs(NdotL);
-    }
-
-    let direct = (kD * albedo / 3.14159265 + specular) * radiance * NdotL * volumetric;
-
-    return direct + indirect;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let N = normalize(in.normal);
-    let V = normalize(uniforms.camera_position.xyz - in.world_position);
-    
-    let sun_dir = normalize(uniforms.light_direction.xyz);
-    let H_sun = normalize(V + sun_dir);
-    
-    let F0 = mix(vec3<f32>(0.04), in.color, in.metallic);
-    
-    var Lo = vec3<f32>(0.0);
-    
-    let radiance_sun = uniforms.light_color.xyz * 1.0;
-    let F_sun = fresnel_schlick(max(dot(H_sun, V), 0.0), F0);
-    let NDF_sun = distribution_ggx(N, H_sun, in.roughness);
-    let G_sun = geometry_smith(N, V, sun_dir, in.roughness);
-    
-    let numerator_sun = NDF_sun * G_sun * F_sun;
-    let denominator_sun = 4.0 * max(dot(N, V), 0.0) * max(dot(N, sun_dir), 0.0) + 0.0001;
-    let specular_sun = numerator_sun / denominator_sun;
-    
-    let kS_sun = F_sun;
-    var kD_sun = vec3<f32>(1.0) - kS_sun;
-    kD_sun *= 1.0 - in.metallic;
-    
-    let NdotL_sun = max(dot(N, sun_dir), 0.0);
-    let direct_sun = (kD_sun * in.color / 3.14159265 + specular_sun) * radiance_sun * NdotL_sun;
-    
-    var indirect_sun = vec3<f32>(0.0);
-    if (in.subsurface > 0.01 && NdotL_sun < 0.0) {
-        indirect_sun = uniforms.light_color.xyz * 0.2 * in.subsurface * abs(NdotL_sun);
-    }
-    
-    Lo = direct_sun + indirect_sun;
-    
-    for (var i: u32 = 0u; i < u32(uniforms.light_params.y); i = i + 1u) {
-        let light = point_lights[i];
-        Lo += calculate_point_light(
-            in.world_position, light,
-            N, V, F0, in.color, in.metallic, in.roughness, in.subsurface
-        );
-    }
-    
-    let ambient = vec3<f32>(uniforms.light_params.x * 0.05) * in.color * in.ao;
-    let color = ambient + Lo;
-    
-    return vec4<f32>(color, 1.0);
-}
-"#;
-
-struct Camera {
-    position: Point3<f32>,
-    yaw: f32,
-    pitch: f32,
-    fov_y: f32,
-    aspect: f32,
-    near: f32,
-    far: f32,
-}
-
-impl Camera {
-    fn new(aspect: f32) -> Self {
-        Self {
-            position: Point3::new(0.0, 15.0, 0.0),
-            yaw: 0.0,
-            pitch: -std::f32::consts::PI / 3.0,
-            fov_y: std::f32::consts::PI / 3.0,
-            aspect,
-            near: 0.1,
-            far: 1000.0,
-        }
-    }
-
-    fn forward(&self) -> Vector3<f32> {
-        Vector3::new(
-            self.yaw.cos() * self.pitch.cos(),
-            self.pitch.sin(),
-            self.yaw.sin() * self.pitch.cos(),
-        )
-    }
-
-    fn right(&self) -> Vector3<f32> {
-        let forward = self.forward();
-        forward.cross(&Vector3::new(0.0, 1.0, 0.0)).normalize()
-    }
-
-    fn pan(&mut self, dx: f32, dy: f32) {
-        let speed = 0.05;
-        let right = self.right();
-        let forward = self.forward();
-        let flat_forward = Vector3::new(forward.x, 0.0, forward.z).normalize();
-        self.position += right * dx * speed;
-        self.position += flat_forward * dy * speed;
-    }
-
-    fn look_around(&mut self, dx: f32, dy: f32) {
-        let sensitivity = 0.005;
-        self.yaw += dx * sensitivity;
-        self.pitch = (self.pitch - dy * sensitivity).clamp(-std::f32::consts::PI / 2.0 + 0.01, -0.01);
-    }
-
-    fn view_matrix(&self) -> Matrix4<f32> {
-        let forward = self.forward();
-        let right = forward.cross(&Vector3::new(0.0, 1.0, 0.0)).normalize();
-        let up = right.cross(&forward).normalize();
-        
-        let target = self.position + forward;
-        Matrix4::look_at_rh(&self.position, &target, &up)
-    }
-
-    fn projection_matrix(&self) -> Matrix4<f32> {
-        Matrix4::new_perspective(self.aspect, self.fov_y, self.near, self.far)
-    }
-
-    fn mvp_matrix(&self) -> [f32; 16] {
-        let view = self.view_matrix();
-        let projection = self.projection_matrix();
-        let mvp = projection * view;
-        let mvp_transposed = mvp.transpose();
-        let mut result = [0f32; 16];
-        for i in 0..4 {
-            for j in 0..4 {
-                result[i * 4 + j] = mvp_transposed[(i, j)];
-            }
-        }
-        result
-    }
-}
-
-#[derive(bytemuck::Pod, bytemuck::Zeroable, Clone, Copy)]
-#[repr(C)]
-struct LightUniforms {
-    mvp: [f32; 16],
-    light_direction: [f32; 4],
-    light_color: [f32; 4],
-    camera_position: [f32; 4],
-    light_params: [f32; 2],
-    _padding: [f32; 2],
-}
-
-impl UniformData for LightUniforms {}
-
-struct State {
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    shader: Shader<LightUniforms>,
-    camera: Camera,
-    world: world::World,
-    world_renderer: world_renderer::WorldRenderer,
-}
-
-impl State {
-    async fn new(window: Window) -> Self {
-        let size = window.inner_size();
-        let window = Arc::new(window);
-        
-        let instance = wgpu::Instance::default();
-        let surface = instance.create_surface(Arc::clone(&window)).unwrap();
-        
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .unwrap();
-
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                    memory_hints: wgpu::MemoryHints::default(),
-                    experimental_features: wgpu::ExperimentalFeatures::default(),
-                    trace: wgpu::Trace::default(),
-                },
-            )
-            .await
-            .unwrap();
-
-        let surface_caps = surface.get_capabilities(&adapter);
-        let surface_format = surface_caps
-            .formats
-            .iter()
-            .find(|f| f.is_srgb())
-            .copied()
-            .unwrap_or(surface_caps.formats[0]);
-
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
-            width: size.width,
-            height: size.height,
-            present_mode: wgpu::PresentMode::Fifo,
-            alpha_mode: surface_caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        
-        surface.configure(&device, &config);
-
-        let light_uniforms = LightUniforms {
-            mvp: [0f32; 16],
-            light_direction: [0.5, 0.8, 0.3, 0.0],
-            light_color: [1.0, 0.95, 0.9, 0.0],
-            camera_position: [0.0, 15.0, 0.0, 0.0],
-            light_params: [0.3, 0.0],
-            _padding: [0.0, 0.0],
-        };
-
-        let world_renderer = world_renderer::WorldRenderer::new(&device);
-
-        let shader_config = ShaderConfig {
-            shader_source: SHADER,
-            shader_label: Some("Shader"),
-            vertex_entry_point: "vs_main",
-            fragment_entry_point: "fs_main",
-            vertex_buffer_layouts: vec![wgpu::VertexBufferLayout {
-                array_stride: std::mem::size_of::<[f32; 13]>() as wgpu::BufferAddress,
-                step_mode: wgpu::VertexStepMode::Vertex,
-                attributes: &[
-                    wgpu::VertexAttribute {
-                        offset: 0,
-                        shader_location: 0,
-                        format: wgpu::VertexFormat::Float32x3,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                        shader_location: 1,
-                        format: wgpu::VertexFormat::Float32x3,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: (std::mem::size_of::<[f32; 3]>() * 2) as wgpu::BufferAddress,
-                        shader_location: 2,
-                        format: wgpu::VertexFormat::Float32x3,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: (std::mem::size_of::<[f32; 3]>() * 3) as wgpu::BufferAddress,
-                        shader_location: 3,
-                        format: wgpu::VertexFormat::Float32,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>()) as wgpu::BufferAddress,
-                        shader_location: 4,
-                        format: wgpu::VertexFormat::Float32,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>() * 2) as wgpu::BufferAddress,
-                        shader_location: 5,
-                        format: wgpu::VertexFormat::Float32,
-                    },
-                    wgpu::VertexAttribute {
-                        offset: (std::mem::size_of::<[f32; 3]>() * 3 + std::mem::size_of::<f32>() * 3) as wgpu::BufferAddress,
-                        shader_location: 6,
-                        format: wgpu::VertexFormat::Float32,
-                    },
-                ],
-            }],
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            depth_stencil: None,
-            color_targets: vec![Some(wgpu::ColorTargetState {
-                format: config.format,
-                blend: Some(wgpu::BlendState::REPLACE),
-                write_mask: wgpu::ColorWrites::ALL,
-            })],
-            bind_group_layout_entries: vec![
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-            ],
-        };
-
-        let shader = Shader::new(
-            &device,
-            shader_config,
-            &light_uniforms,
-            &[wgpu::BindGroupEntry {
-                binding: 1,
-                resource: world_renderer.point_light_buffer().as_entire_binding(),
-            }],
-        );
-
-        let aspect = config.width as f32 / config.height as f32;
-        let camera = Camera::new(aspect);
-
-        let terrain_generator = Box::new(terrain_generator::PerlinTerrainGenerator::new(
-            world::CHUNK_SIZE,
-            42,
-            0.1,
-            10.0,
-        ));
-        let mut world = world::World::new(terrain_generator);
-        world.update(camera.position.x, camera.position.z, 4);
-
-        Self {
-            surface,
-            device,
-            queue,
-            config,
-            shader,
-            camera,
-            world,
-            world_renderer,
-        }
-    }
-
-    fn render(&mut self) {
-        self.world.update(self.camera.position.x, self.camera.position.z, 4);
-        self.world_renderer.update(&self.device, &self.queue, &mut self.world);
-
-        let output = self.surface.get_current_texture().unwrap();
-        let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("Encoder"),
-        });
-
-        {
-            let mvp = self.camera.mvp_matrix();
-            let camera_pos = [self.camera.position.x, self.camera.position.y, self.camera.position.z];
-            let num_lights = self.world.lights.len() as u32;
-            
-            let light_uniforms = LightUniforms {
-                mvp,
-                light_direction: [0.5, 0.8, 0.3, 0.0],
-                light_color: [1.0, 0.95, 0.9, 0.0],
-                camera_position: [camera_pos[0], camera_pos[1], camera_pos[2], 0.0],
-                light_params: [0.3, num_lights as f32],
-                _padding: [0.0, 0.0],
-            };
-            self.shader.update_uniforms(&self.queue, &light_uniforms);
-            self.world_renderer.update_lights(&self.queue, &self.world.lights);
-
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                multiview_mask: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.0,
-                            g: 0.0,
-                            b: 0.0,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            render_pass.set_pipeline(self.shader.pipeline());
-            render_pass.set_bind_group(0, self.shader.bind_group(), &[]);
-            self.world_renderer.render(&mut render_pass);
-        }
-
-        self.queue.submit(Some(encoder.finish()));
-        output.present();
-    }
-
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        if new_size.width > 0 && new_size.height > 0 {
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.camera.aspect = new_size.width as f32 / new_size.height as f32;
-            self.surface.configure(&self.device, &self.config);
-        }
-    }
-
-    fn handle_pan(&mut self, dx: f64, dy: f64) {
-        self.camera.pan(dx as f32, dy as f32);
-    }
-
-    fn handle_look(&mut self, dx: f64, dy: f64) {
-        self.camera.look_around(dx as f32, dy as f32);
-    }
-}
-
-struct App {
-    state: Option<State>,
-    left_mouse_pressed: bool,
-    right_mouse_pressed: bool,
-    last_cursor_pos: Option<winit::dpi::PhysicalPosition<f64>>,
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window_attributes = Window::default_attributes()
-            .with_title("Rust Heightmap Viewer")
-            .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0));
-        
-        let window = event_loop.create_window(window_attributes).unwrap();
-        
-        let state = block_on(State::new(window));
-        self.state = Some(state);
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        if let Some(state) = &mut self.state {
-            match event {
-                WindowEvent::CloseRequested => {
-                    event_loop.exit();
-                }
-                WindowEvent::Resized(physical_size) => {
-                    state.resize(physical_size);
-                }
-            WindowEvent::MouseInput { state: button_state, button, .. } => {
-                if button == winit::event::MouseButton::Left {
-                    self.left_mouse_pressed = button_state == winit::event::ElementState::Pressed;
-                    if self.left_mouse_pressed {
-                        self.last_cursor_pos = None;
-                    }
-                }
-                if button == winit::event::MouseButton::Right {
-                    self.right_mouse_pressed = button_state == winit::event::ElementState::Pressed;
-                    if self.right_mouse_pressed {
-                        self.last_cursor_pos = None;
-                    }
-                }
-            }
-            WindowEvent::CursorMoved { position, .. } => {
-                if self.left_mouse_pressed {
-                    if let Some(last_pos) = self.last_cursor_pos {
-                        let dx = position.x - last_pos.x;
-                        let dy = position.y - last_pos.y;
-                        state.handle_look(dx, dy);
-                    }
-                    self.last_cursor_pos = Some(position);
-                }
-                if self.right_mouse_pressed {
-                    if let Some(last_pos) = self.last_cursor_pos {
-                        let dx = position.x - last_pos.x;
-                        let dy = position.y - last_pos.y;
-                        state.handle_pan(dx, dy);
-                    }
-                    self.last_cursor_pos = Some(position);
-                }
-            }
-                _ => {}
-            }
-        }
-    }
-
-    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(state) = &mut self.state {
-            state.render();
-        }
-    }
-}
-
-fn block_on<F: std::future::Future>(future: F) -> F::Output {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-        .block_on(future)
-}
+use bevy::prelude::*;
+use bevy::asset::RenderAssetUsages;
+use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use parrot::Perlin;
+use std::collections::{HashMap, HashSet, VecDeque};
 
 fn main() {
-    let event_loop = EventLoop::new().unwrap();
-    let mut app = App { 
-        state: None,
-        left_mouse_pressed: false,
-        right_mouse_pressed: false,
-        last_cursor_pos: None,
+    App::new()
+        .insert_resource(ClearColor(Color::srgb(0.60, 0.80, 0.95)))
+        .insert_resource(AmbientLight {
+            color: Color::WHITE,
+            brightness: 300.0,
+            affects_lightmapped_meshes: false,
+        })
+        .insert_resource(TerrainConfig::default())
+        .insert_resource(TopDownCameraSettings::default())
+        .add_plugins(DefaultPlugins)
+        .add_systems(Startup, (setup_viewer, setup_terrain_resources))
+        .add_systems(
+            Update,
+            (
+                top_down_camera_input,
+                update_top_down_camera.after(top_down_camera_input),
+                stream_chunks,
+            ),
+        )
+        .run();
+}
+
+#[derive(Resource, Clone)]
+struct TerrainConfig {
+    seed: u64,
+    chunk_size: i32,
+    tile_size: f32,
+    view_distance_chunks: i32,
+    chunk_spawn_budget_per_frame: usize,
+    noise_base_frequency: f64,
+    noise_octaves: u32,
+    noise_persistence: f64,
+    height_scale: f32,
+}
+
+impl Default for TerrainConfig {
+    fn default() -> Self {
+        Self {
+            seed: 12345,
+            chunk_size: 32,
+            tile_size: 2.0,
+            view_distance_chunks: 8,
+            chunk_spawn_budget_per_frame: 32,
+            noise_base_frequency: 0.02,
+            noise_octaves: 4,
+            noise_persistence: 0.5,
+            height_scale: 8.0,
+        }
+    }
+}
+
+#[derive(Resource, Clone)]
+struct TerrainNoise {
+    perlin: Perlin,
+}
+
+#[derive(Resource, Clone)]
+struct TerrainAtlas {
+    material: Handle<StandardMaterial>,
+    tile_count: f32,
+}
+
+#[derive(Resource, Default)]
+struct LoadedChunks {
+    entities: HashMap<IVec2, Entity>,
+}
+
+#[derive(Resource, Default)]
+struct ChunkStreamingState {
+    last_viewer_chunk: Option<IVec2>,
+    desired: HashSet<IVec2>,
+    pending_spawn: VecDeque<IVec2>,
+    pending_despawn: VecDeque<(IVec2, Entity)>,
+}
+
+#[derive(Component)]
+struct Viewer;
+
+#[derive(Component)]
+struct TopDownCamera;
+
+#[derive(Resource, Clone)]
+struct TopDownCameraSettings {
+    yaw: f32,
+    pitch: f32,
+    distance: f32,
+    min_distance: f32,
+    max_distance: f32,
+    pan_speed: f32,
+    pan_speed_fast: f32,
+    rotate_speed: f32,
+    zoom_speed: f32,
+    mouse_pan_sensitivity: f32,
+}
+
+impl Default for TopDownCameraSettings {
+    fn default() -> Self {
+        Self {
+            yaw: 0.8,
+            pitch: 1.05,
+            distance: 80.0,
+            min_distance: 10.0,
+            max_distance: 400.0,
+            pan_speed: 60.0,
+            pan_speed_fast: 180.0,
+            rotate_speed: 1.8,
+            zoom_speed: 0.12,
+            mouse_pan_sensitivity: 0.12,
+        }
+    }
+}
+
+#[derive(Component)]
+struct Chunk {
+    #[allow(dead_code)]
+    coord: IVec2,
+}
+
+fn setup_viewer(mut commands: Commands) {
+    commands.spawn((Viewer, Transform::from_xyz(0.0, 0.0, 0.0)));
+
+    commands.spawn((
+        TopDownCamera,
+        Camera3d::default(),
+        Transform::default(),
+    ));
+
+    commands.spawn((
+        DirectionalLight {
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(
+            EulerRot::XYZ,
+            -0.8,
+            0.7,
+            0.0,
+        )),
+    ));
+}
+
+fn setup_terrain_resources(
+    mut commands: Commands,
+    config: Res<TerrainConfig>,
+    mut images: ResMut<Assets<Image>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    commands.insert_resource(TerrainNoise {
+        perlin: Perlin::new(config.seed),
+    });
+    commands.insert_resource(LoadedChunks::default());
+    commands.insert_resource(ChunkStreamingState::default());
+
+    // Tiny in-memory atlas: [water, sand, grass, rock, snow]
+    // Each "tile" in the heightmap selects one of these texels via UVs.
+    let atlas_colors = [
+        Color::srgb(0.10, 0.25, 0.80),
+        Color::srgb(0.85, 0.80, 0.55),
+        Color::srgb(0.15, 0.60, 0.20),
+        Color::srgb(0.45, 0.45, 0.50),
+        Color::srgb(0.95, 0.95, 0.98),
+    ];
+
+    let atlas_tex = images.add(make_atlas_1x_n_image(&atlas_colors));
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(atlas_tex),
+        perceptual_roughness: 1.0,
+        ..default()
+    });
+
+    commands.insert_resource(TerrainAtlas {
+        material,
+        tile_count: atlas_colors.len() as f32,
+    });
+}
+
+fn make_atlas_1x_n_image(colors: &[Color]) -> Image {
+    let mut data = Vec::with_capacity(colors.len() * 4);
+    for c in colors {
+        let [r, g, b, a] = c.to_srgba().to_u8_array();
+        data.extend_from_slice(&[r, g, b, a]);
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: colors.len() as u32,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = bevy::image::ImageSampler::nearest();
+    image
+}
+
+fn top_down_camera_input(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse_buttons: Res<ButtonInput<MouseButton>>,
+    mut mouse_wheel: MessageReader<MouseWheel>,
+    mut mouse_motion: MessageReader<MouseMotion>,
+    mut settings: ResMut<TopDownCameraSettings>,
+    mut q_focus: Query<&mut Transform, With<Viewer>>,
+) {
+    let mut focus = match q_focus.single_mut() {
+        Ok(t) => t,
+        Err(_) => return,
     };
-    event_loop.run_app(&mut app).unwrap();
+
+    // Rotate around focus
+    if keys.pressed(KeyCode::KeyQ) {
+        settings.yaw += settings.rotate_speed * time.delta_secs();
+    }
+    if keys.pressed(KeyCode::KeyE) {
+        settings.yaw -= settings.rotate_speed * time.delta_secs();
+    }
+
+    // Zoom
+    let mut scroll: f32 = 0.0;
+    for ev in mouse_wheel.read() {
+        scroll += ev.y;
+    }
+    if scroll.abs() > 0.0 {
+        // Exponential-ish feel, similar to city builder cameras.
+        let factor = (1.0 - scroll * settings.zoom_speed).clamp(0.2, 5.0);
+        settings.distance = (settings.distance * factor).clamp(settings.min_distance, settings.max_distance);
+    }
+
+    // Pan (keyboard) on XZ plane, relative to camera yaw.
+    let mut input = Vec2::ZERO;
+    if keys.pressed(KeyCode::KeyW) {
+        input.y += 1.0;
+    }
+    if keys.pressed(KeyCode::KeyS) {
+        input.y -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyA) {
+        input.x -= 1.0;
+    }
+    if keys.pressed(KeyCode::KeyD) {
+        input.x += 1.0;
+    }
+
+    let yaw_rot = Quat::from_rotation_y(settings.yaw);
+    let right = yaw_rot * Vec3::X;
+    let forward = yaw_rot * Vec3::Z;
+
+    if input.length_squared() > 0.0 {
+        let speed = if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+            settings.pan_speed_fast
+        } else {
+            settings.pan_speed
+        };
+
+        let delta = (right * input.x + forward * input.y) * speed * time.delta_secs();
+        focus.translation += Vec3::new(delta.x, 0.0, delta.z);
+    }
+
+    // Pan (mouse drag): middle mouse button drags the world under the cursor.
+    if mouse_buttons.pressed(MouseButton::Middle) {
+        let mut drag = Vec2::ZERO;
+        for ev in mouse_motion.read() {
+            drag += ev.delta;
+        }
+        if drag.length_squared() > 0.0 {
+            let scale = settings.mouse_pan_sensitivity * (settings.distance / 80.0);
+            // Screen-space: +x right, +y up. Dragging right should move focus left.
+            let delta = (-right * drag.x + forward * drag.y) * scale;
+            focus.translation += Vec3::new(delta.x, 0.0, delta.z);
+        }
+    }
+}
+
+fn update_top_down_camera(
+    settings: Res<TopDownCameraSettings>,
+    q_focus: Query<&Transform, (With<Viewer>, Without<TopDownCamera>)>,
+    mut q_cam: Query<&mut Transform, (With<TopDownCamera>, Without<Viewer>)>,
+) {
+    let focus = match q_focus.single() {
+        Ok(v) => v.translation,
+        Err(_) => return,
+    };
+    let mut cam = match q_cam.single_mut() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let rot = Quat::from_euler(EulerRot::YXZ, settings.yaw, settings.pitch, 0.0);
+    let offset = rot * Vec3::new(0.0, 0.0, -settings.distance);
+    cam.translation = focus + offset;
+    cam.look_at(focus, Vec3::Y);
+}
+
+fn stream_chunks(
+    mut commands: Commands,
+    config: Res<TerrainConfig>,
+    noise: Res<TerrainNoise>,
+    atlas: Res<TerrainAtlas>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut loaded: ResMut<LoadedChunks>,
+    mut streaming: ResMut<ChunkStreamingState>,
+    q_viewer: Query<&Transform, With<Viewer>>,
+) {
+    let viewer_pos = match q_viewer.single() {
+        Ok(v) => v.translation,
+        Err(_) => return,
+    };
+    let chunk_world_size = config.chunk_size as f32 * config.tile_size;
+    let viewer_chunk = IVec2::new(
+        (viewer_pos.x / chunk_world_size).floor() as i32,
+        (viewer_pos.z / chunk_world_size).floor() as i32,
+    );
+
+    // Recompute streaming targets only when entering a new chunk.
+    if streaming.last_viewer_chunk != Some(viewer_chunk) {
+        streaming.last_viewer_chunk = Some(viewer_chunk);
+
+        streaming.desired.clear();
+        for dz in -config.view_distance_chunks..=config.view_distance_chunks {
+            for dx in -config.view_distance_chunks..=config.view_distance_chunks {
+                streaming.desired.insert(viewer_chunk + IVec2::new(dx, dz));
+            }
+        }
+
+        streaming.pending_spawn.clear();
+        let desired_coords: Vec<IVec2> = streaming.desired.iter().copied().collect();
+        for coord in desired_coords {
+            if !loaded.entities.contains_key(&coord) {
+                streaming.pending_spawn.push_back(coord);
+            }
+        }
+
+        streaming.pending_despawn.clear();
+        for (coord, entity) in loaded.entities.iter() {
+            if !streaming.desired.contains(coord) {
+                streaming.pending_despawn.push_back((*coord, *entity));
+            }
+        }
+    }
+
+    // Incremental despawn/spawn to avoid massive spikes at large view distances.
+    let mut budget = config.chunk_spawn_budget_per_frame;
+    while budget > 0 {
+        let Some((coord, entity)) = streaming.pending_despawn.pop_front() else {
+            break;
+        };
+        if loaded.entities.remove(&coord).is_some() {
+            commands.entity(entity).despawn();
+        }
+        budget -= 1;
+    }
+
+    let mut budget = config.chunk_spawn_budget_per_frame;
+    while budget > 0 {
+        let Some(coord) = streaming.pending_spawn.pop_front() else {
+            break;
+        };
+        if loaded.entities.contains_key(&coord) {
+            budget -= 1;
+            continue;
+        }
+        let chunk_entity = spawn_chunk(&mut commands, &mut meshes, &config, &noise, &atlas, coord);
+        loaded.entities.insert(coord, chunk_entity);
+        budget -= 1;
+    }
+}
+
+fn spawn_chunk(
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    config: &TerrainConfig,
+    noise: &TerrainNoise,
+    atlas: &TerrainAtlas,
+    coord: IVec2,
+) -> Entity {
+    let chunk_world_size = config.chunk_size as f32 * config.tile_size;
+    let chunk_origin = Vec3::new(
+        coord.x as f32 * chunk_world_size,
+        0.0,
+        coord.y as f32 * chunk_world_size,
+    );
+
+    let mesh = build_chunk_mesh(config, &noise.perlin, coord, atlas.tile_count);
+    let mesh_handle = meshes.add(mesh);
+
+    commands
+        .spawn((
+            Chunk { coord },
+            Mesh3d(mesh_handle),
+            MeshMaterial3d(atlas.material.clone()),
+            Transform::from_translation(chunk_origin),
+        ))
+        .id()
+}
+
+fn build_chunk_mesh(
+    config: &TerrainConfig,
+    perlin: &Perlin,
+    coord: IVec2,
+    atlas_tile_count: f32,
+) -> Mesh {
+    let chunk_world_size = config.chunk_size as f32 * config.tile_size;
+    let chunk_origin_x = coord.x as f32 * chunk_world_size;
+    let chunk_origin_z = coord.y as f32 * chunk_world_size;
+
+    let n = config.chunk_size.max(1) as usize;
+    let stride = n + 1;
+    let tile_size = config.tile_size;
+
+    // Pre-sample heights once per grid vertex (huge perf win vs per-tile sampling).
+    let mut heights: Vec<f32> = vec![0.0; stride * stride];
+    for gz in 0..=n {
+        for gx in 0..=n {
+            let wx = chunk_origin_x + gx as f32 * tile_size;
+            let wz = chunk_origin_z + gz as f32 * tile_size;
+            heights[gz * stride + gx] = sample_height(config, perlin, wx, wz);
+        }
+    }
+
+    // Derive smooth normals from the height grid (no extra noise samples).
+    let mut normals_grid: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0]; stride * stride];
+    for gz in 0..=n {
+        for gx in 0..=n {
+            let gx_l = gx.saturating_sub(1);
+            let gx_r = (gx + 1).min(n);
+            let gz_d = gz.saturating_sub(1);
+            let gz_u = (gz + 1).min(n);
+
+            let h_l = heights[gz * stride + gx_l];
+            let h_r = heights[gz * stride + gx_r];
+            let h_d = heights[gz_d * stride + gx];
+            let h_u = heights[gz_u * stride + gx];
+
+            let dx = ((gx_r as i32 - gx_l as i32).max(1) as f32) * tile_size;
+            let dz = ((gz_u as i32 - gz_d as i32).max(1) as f32) * tile_size;
+
+            let dhdx = (h_r - h_l) / dx;
+            let dhdz = (h_u - h_d) / dz;
+
+            let normal = Vec3::new(-dhdx, 1.0, -dhdz).normalize_or_zero();
+            normals_grid[gz * stride + gx] = [normal.x, normal.y, normal.z];
+        }
+    }
+
+    let tile_count = (n * n) as usize;
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(tile_count * 4);
+    let mut normals: Vec<[f32; 3]> = Vec::with_capacity(tile_count * 4);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(tile_count * 4);
+    let mut indices: Vec<u32> = Vec::with_capacity(tile_count * 6);
+
+    for z in 0..n {
+        for x in 0..n {
+            let x0 = x as f32 * tile_size;
+            let z0 = z as f32 * tile_size;
+            let x1 = x0 + tile_size;
+            let z1 = z0 + tile_size;
+
+            let h00 = heights[z * stride + x];
+            let h10 = heights[z * stride + (x + 1)];
+            let h01 = heights[(z + 1) * stride + x];
+            let h11 = heights[(z + 1) * stride + (x + 1)];
+
+            let n00 = normals_grid[z * stride + x];
+            let n10 = normals_grid[z * stride + (x + 1)];
+            let n01 = normals_grid[(z + 1) * stride + x];
+            let n11 = normals_grid[(z + 1) * stride + (x + 1)];
+
+            let avg_h = (h00 + h10 + h01 + h11) * 0.25;
+            let tile_index = pick_tile_index(avg_h);
+            let uv_u = (tile_index as f32 + 0.5) / atlas_tile_count;
+            let uv = [uv_u, 0.5];
+
+            let v0 = Vec3::new(x0, h00, z0);
+            let v1 = Vec3::new(x1, h10, z0);
+            let v2 = Vec3::new(x0, h01, z1);
+            let v3 = Vec3::new(x1, h11, z1);
+
+            let base = positions.len() as u32;
+            positions.extend_from_slice(&[
+                [v0.x, v0.y, v0.z],
+                [v1.x, v1.y, v1.z],
+                [v2.x, v2.y, v2.z],
+                [v3.x, v3.y, v3.z],
+            ]);
+            normals.extend_from_slice(&[
+                n00,
+                n10,
+                n01,
+                n11,
+            ]);
+            uvs.extend_from_slice(&[uv, uv, uv, uv]);
+
+            // Winding chosen so the "top" faces upward (CCW when viewed from above).
+            indices.extend_from_slice(&[
+                base,
+                base + 2,
+                base + 1,
+                base + 1,
+                base + 2,
+                base + 3,
+            ]);
+        }
+    }
+
+    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+fn sample_height(config: &TerrainConfig, perlin: &Perlin, world_x: f32, world_z: f32) -> f32 {
+    let mut amplitude = 1.0f64;
+    let mut frequency = config.noise_base_frequency;
+    let mut sum = 0.0f64;
+    let mut norm = 0.0f64;
+
+    for _ in 0..config.noise_octaves {
+        let n = perlin.noise2d(world_x as f64 * frequency, world_z as f64 * frequency);
+        sum += n * amplitude;
+        norm += amplitude;
+        amplitude *= config.noise_persistence;
+        frequency *= 2.0;
+    }
+
+    let value = if norm > 0.0 { sum / norm } else { 0.0 };
+    (value as f32) * config.height_scale
+}
+
+fn pick_tile_index(height: f32) -> u32 {
+    // 0..=4 maps to the atlas order: [water, sand, grass, rock, snow]
+    if height < -3.0 {
+        0
+    } else if height < -1.0 {
+        1
+    } else if height < 3.0 {
+        2
+    } else if height < 6.0 {
+        3
+    } else {
+        4
+    }
 }
