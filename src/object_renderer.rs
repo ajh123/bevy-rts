@@ -187,7 +187,7 @@ pub(crate) fn update_object_chunk_visuals(
                     SceneRoot(scene_handle),
                     Transform::from_translation(pos)
                         .with_rotation(rot)
-                        .with_scale(Vec3::splat(scale)),
+                        .with_scale(scale),
                     Visibility::default(),
                 ));
             }
@@ -237,7 +237,7 @@ pub(crate) fn update_hologram_preview(
     let pos_world = Vec3::new(hit_world.x, base_h, hit_world.z) + rotated_offset;
     let transform = Transform::from_translation(pos_world)
         .with_rotation(rot)
-        .with_scale(Vec3::splat(spec.render_scale));
+        .with_scale(spec.render_scale);
 
     let can_place = objects
         .0

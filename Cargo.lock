@@ -328,8 +328,8 @@ name = "bevy-rts"
 version = "0.1.0"
 dependencies = [
  "bevy",
- "bytemuck 1.24.0 (git+https://github.com/Lokathor/bytemuck)",
- "glam 0.30.9 (git+https://github.com/bitshifter/glam-rs)",
+ "bytemuck",
+ "glam 0.30.9",
  "nalgebra",
  "parrot-rng",
  "rand",
@@ -554,7 +554,7 @@ checksum = "49504fac6b9897f03b4bdc0189c04ef1ba0a9b37926343aa520a71619e90e116"
 dependencies = [
  "bevy_math",
  "bevy_reflect",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "derive_more",
  "encase",
  "serde",
@@ -711,7 +711,7 @@ dependencies = [
  "bevy_time",
  "bevy_transform",
  "bevy_utils",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "tracing",
 ]
 
@@ -776,7 +776,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_utils",
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "futures-lite",
  "guillotiere",
  "half",
@@ -937,7 +937,7 @@ dependencies = [
  "approx",
  "bevy_reflect",
  "derive_more",
- "glam 0.30.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glam 0.30.9",
  "itertools 0.14.0",
  "libm",
  "rand",
@@ -965,7 +965,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_transform",
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "derive_more",
  "hexasphere",
  "thiserror 2.0.17",
@@ -1004,7 +1004,7 @@ dependencies = [
  "bevy_transform",
  "bevy_utils",
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "derive_more",
  "fixedbitset",
  "nonmax",
@@ -1112,7 +1112,7 @@ dependencies = [
  "downcast-rs 2.0.2",
  "erased-serde",
  "foldhash 0.2.0",
- "glam 0.30.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glam 0.30.9",
  "inventory",
  "petgraph",
  "serde",
@@ -1166,7 +1166,7 @@ dependencies = [
  "bevy_utils",
  "bevy_window",
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "derive_more",
  "downcast-rs 2.0.2",
  "encase",
@@ -1287,7 +1287,7 @@ dependencies = [
  "bevy_transform",
  "bevy_utils",
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "derive_more",
  "fixedbitset",
  "nonmax",
@@ -1458,7 +1458,7 @@ dependencies = [
  "bevy_transform",
  "bevy_ui",
  "bevy_utils",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "derive_more",
  "tracing",
 ]
@@ -1517,7 +1517,7 @@ dependencies = [
  "bevy_reflect",
  "bevy_tasks",
  "bevy_window",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "cfg-if",
  "js-sys",
  "tracing",
@@ -1572,7 +1572,7 @@ version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "serde_core",
 ]
 
@@ -1640,11 +1640,6 @@ checksum = "1fbdf580320f38b612e485521afda1ee26d10cc9884efaaa750d383e13e3c5f4"
 dependencies = [
  "bytemuck_derive",
 ]
-
-[[package]]
-name = "bytemuck"
-version = "1.24.0"
-source = "git+https://github.com/Lokathor/bytemuck#e4bce3b32c33888c99d1fb1b5ff66f2a03a92f56"
 
 [[package]]
 name = "bytemuck_derive"
@@ -2135,7 +2130,7 @@ checksum = "02ba239319a4f60905966390f5e52799d868103a533bb7e27822792332504ddd"
 dependencies = [
  "const_panic",
  "encase_derive",
- "glam 0.30.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glam 0.30.9",
  "thiserror 2.0.17",
 ]
 
@@ -2277,7 +2272,7 @@ version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39a654f404bbcbd48ea58c617c2993ee91d1cb63727a37bf2323a4edeed1b8c5"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
 ]
 
 [[package]]
@@ -2529,16 +2524,11 @@ version = "0.30.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd47b05dddf0005d850e5644cae7f2b14ac3df487979dbfff3b56f20b1a6ae46"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "libm",
  "rand",
  "serde_core",
 ]
-
-[[package]]
-name = "glam"
-version = "0.30.9"
-source = "git+https://github.com/bitshifter/glam-rs#21189a61b1950035d551520968c755f5f04a6cec"
 
 [[package]]
 name = "glob"
@@ -2735,7 +2725,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29a164ceff4500f2a72b1d21beaa8aa8ad83aec2b641844c659b190cb3ea2e0b"
 dependencies = [
  "constgebra",
- "glam 0.30.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glam 0.30.9",
  "tinyvec",
 ]
 
@@ -2751,7 +2741,7 @@ version = "0.25.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6506c6c10786659413faa717ceebcb8f70731c0a60cbae39795fdf114519c1a"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "byteorder-lite",
  "moxcms",
  "num-traits",
@@ -3142,7 +3132,8 @@ dependencies = [
 [[package]]
 name = "nalgebra"
 version = "0.34.1"
-source = "git+https://github.com/dimforge/nalgebra#3014264f803a5682b43c34f1334cec2d4ad54282"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c4d5b3eff5cd580f93da45e64715e8c20a3996342f1e466599cf7a267a0c2f5f"
 dependencies = [
  "approx",
  "glam 0.14.0",
@@ -3160,7 +3151,7 @@ dependencies = [
  "glam 0.27.0",
  "glam 0.28.0",
  "glam 0.29.3",
- "glam 0.30.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glam 0.30.9",
  "matrixmultiply",
  "nalgebra-macros",
  "num-complex",
@@ -3173,7 +3164,8 @@ dependencies = [
 [[package]]
 name = "nalgebra-macros"
 version = "0.3.0"
-source = "git+https://github.com/dimforge/nalgebra#3014264f803a5682b43c34f1334cec2d4ad54282"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "973e7178a678cfd059ccec50887658d482ce16b0aa9da3888ddeab5cd5eb4889"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3978,7 +3970,7 @@ version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6717cf23b488adf64b9d711329542ba34de147df262370221940dfabc2c91358"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "font-types",
 ]
 
@@ -4153,7 +4145,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfb9cf8877777222e4a3bc7eb247e398b56baba500c38c1c46842431adc8b55c"
 dependencies = [
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "libm",
  "smallvec",
  "ttf-parser 0.21.1",
@@ -4178,7 +4170,7 @@ version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96b02de82ddbe1b636e6170c21be622223aea188ef2e139be0a5b219ec215323"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
 ]
 
 [[package]]
@@ -4316,7 +4308,7 @@ version = "0.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c31071dedf532758ecf3fed987cdb4bd9509f900e026ab684b4ecb81ea49841"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "read-fonts",
 ]
 
@@ -4549,7 +4541,7 @@ checksum = "83d13394d44dae3207b52a326c0c85a8bf87f1541f23b0d143811088497b09ab"
 dependencies = [
  "arrayref",
  "arrayvec",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "cfg-if",
  "log",
  "tiny-skia-path",
@@ -4562,7 +4554,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c9e7fc0c2e86a30b117d0462aa261b72b7a99b7ebd7deb3a14ceda95c5bdc93"
 dependencies = [
  "arrayref",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "strict-num",
 ]
 
@@ -5149,7 +5141,7 @@ dependencies = [
  "bit-set",
  "bitflags 2.10.0",
  "block",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "cfg-if",
  "cfg_aliases",
  "core-graphics-types 0.2.0",
@@ -5192,7 +5184,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eca7a8d8af57c18f57d393601a1fb159ace8b2328f1b6b5f80893f7d672c9ae2"
 dependencies = [
  "bitflags 2.10.0",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "js-sys",
  "log",
  "serde",
@@ -5206,7 +5198,7 @@ version = "0.7.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ce5da8ecb62bcd8ec8b7ea19f69a51275e91299be594ea5cc6ef7819e16cd03"
 dependencies = [
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "safe_arch",
 ]
 
@@ -5701,7 +5693,7 @@ dependencies = [
  "atomic-waker",
  "bitflags 2.10.0",
  "block2 0.5.1",
- "bytemuck 1.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bytemuck",
  "calloop",
  "cfg_aliases",
  "concurrent-queue",

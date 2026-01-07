@@ -1,4 +1,5 @@
 (
   name: "Small House",
   gltf: "objects/house/scene.gltf",
+  scale: (0.05, 0.05, 0.05),
 )

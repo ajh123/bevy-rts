@@ -19,7 +19,7 @@ pub(crate) struct ObjectTypeSpec {
     pub(crate) gltf: String,
     pub(crate) footprint_tiles: IVec2,
     pub(crate) gltf_bounds: Option<GltfBounds>,
-    pub(crate) render_scale: f32,
+    pub(crate) render_scale: Vec3,
     pub(crate) render_offset: Vec3,
     pub(crate) hover_radius: f32,
 }
@@ -310,8 +310,10 @@ impl FreeformObjectWorld {
 fn collision_radius_for_spec(spec: &ObjectTypeSpec) -> f32 {
     if let Some(b) = spec.gltf_bounds {
         let size = b.size();
-        let rx = 0.5 * size.x.abs() * spec.render_scale;
-        let rz = 0.5 * size.z.abs() * spec.render_scale;
+        let sx = spec.render_scale.x.abs();
+        let sz = spec.render_scale.z.abs();
+        let rx = 0.5 * size.x.abs() * sx;
+        let rz = 0.5 * size.z.abs() * sz;
         (rx * rx + rz * rz).sqrt().max(0.1)
     } else {
         spec.hover_radius.max(0.1)
@@ -781,10 +783,10 @@ pub(crate) fn setup_object_types(mut commands: Commands, config: Res<TerrainConf
     {
         let bounds = try_compute_gltf_bounds_in_parent_space(&def.gltf).ok();
 
-        let (render_scale, render_offset, hover_radius) = compute_render_params(
-            config.0.tile_size,
-            bounds,
-        );
+        let render_scale = Vec3::new(def.scale.0, def.scale.1, def.scale.2);
+
+        let (_unused_scale, render_offset, hover_radius) =
+            compute_render_params(config.0.tile_size, bounds, render_scale);
 
         let id = registry.register(ObjectTypeSpec {
             name: def.name,
@@ -812,9 +814,9 @@ pub(crate) fn setup_object_types(mut commands: Commands, config: Res<TerrainConf
                 gltf: "".to_string(),
                 footprint_tiles: IVec2::new(1, 1),
                 gltf_bounds: None,
-                render_scale: 1.0,
+                render_scale: Vec3::ONE,
                 render_offset: Vec3::ZERO,
-                hover_radius: config.0.tile_size.max(1.0),
+                hover_radius: 1.0,
             })
         });
 
@@ -933,6 +935,15 @@ pub(crate) fn handle_build_destroy_click(
 struct ObjectTypeDefFile {
     name: String,
     gltf: String,
+    #[serde(default = "default_object_scale")]
+    scale: Scale3,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+struct Scale3(pub(crate) f32, pub(crate) f32, pub(crate) f32);
+
+fn default_object_scale() -> Scale3 {
+    Scale3(1.0, 1.0, 1.0)
 }
 
 fn load_object_type_defs_from_dir(
@@ -968,19 +979,27 @@ fn load_object_type_defs_from_dir(
     Ok(defs)
 }
 
-fn compute_render_params(tile_size: f32, bounds: Option<GltfBounds>) -> (f32, Vec3, f32) {
-    let desired = (tile_size.max(1e-3)) * 2.0;
+fn compute_render_params(_tile_size: f32, bounds: Option<GltfBounds>, scale: Vec3) -> (Vec3, Vec3, f32) {
+    // Use raw glTF units as-authored (no tile-size-based scaling).
+    // We still compute a reasonable render offset and hover radius from bounds when available.
     if let Some(b) = bounds {
-        let size = b.size();
-        let max_dim = size.x.abs().max(size.z.abs()).max(1e-3);
-        let s = (desired / max_dim).clamp(0.0001, 1000.0);
+        let s = scale;
+
+        // Center in XZ and put the model's bottom on the ground (y = 0).
         let center = b.center();
         let min_y = b.min.y;
-        let offset = Vec3::new(-center.x * s, -min_y * s, -center.z * s);
-        let radius = (0.5 * max_dim * s).max(tile_size.max(1.0) * 0.25);
+        let offset = Vec3::new(-center.x * s.x, -min_y * s.y, -center.z * s.z);
+
+        // Conservative radius in XZ for hover + collision.
+        let size = b.size();
+        let rx = 0.5 * size.x.abs() * s.x.abs();
+        let rz = 0.5 * size.z.abs() * s.z.abs();
+        let radius = (rx * rx + rz * rz).sqrt().max(0.1);
+
         (s, offset, radius)
     } else {
-        (1.0, Vec3::ZERO, desired * 0.5)
+        // With unknown bounds we can't infer a size; keep scale 1 and pick a small sane radius.
+        (scale, Vec3::ZERO, 1.0)
     }
 }
 

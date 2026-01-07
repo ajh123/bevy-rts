@@ -22,7 +22,7 @@ fn main() {
         .insert_resource(TerrainConfigRes(terrain::TerrainConfig {
             seed: 12345,
             chunk_size: 32,
-            tile_size: 4.0,
+            tile_size: 2.0,
             view_distance_chunks: 8,
             chunk_spawn_budget_per_frame: 32,
             noise_base_frequency: 0.02,
