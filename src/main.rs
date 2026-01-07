@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
+use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
 mod camera;
 mod terrain;
@@ -8,6 +8,7 @@ mod tile_types;
 mod selection;
 mod object_system;
 mod object_renderer;
+mod toolbar;
 
 #[derive(Resource, Clone)]
 pub(crate) struct TerrainConfigRes(pub(crate) terrain::TerrainConfig);
@@ -34,18 +35,20 @@ fn main() {
         .insert_resource(camera::TopDownCameraSettings::default())
         .insert_resource(selection::CursorHitRes::default())
         .insert_resource(camera::UiInputCaptureRes::default())
+        .insert_resource(toolbar::ToolbarState::default())
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin::default())
         .add_systems(
             Startup,
             (
                 camera::setup_viewer,
-                terrain_renderer::setup_terrain_renderer
-                ,
+                terrain_renderer::setup_terrain_renderer,
                 object_system::setup_object_world,
                 object_system::setup_object_types,
+                toolbar::init_toolbar_state,
                 object_renderer::setup_object_renderer
-           ),
+           )
+                .chain(),
         )
         .add_systems(
             Update,
@@ -54,7 +57,7 @@ fn main() {
                 camera::top_down_camera_input,
                 camera::update_top_down_camera,
                 selection::update_cursor_hit,
-                object_system::update_interaction_mode,
+                toolbar::update_toolbar_state_from_hotkeys,
                 object_system::update_placement_rotation,
                 object_system::update_hovered_object,
                 object_system::handle_build_destroy_click,
@@ -66,13 +69,6 @@ fn main() {
             )
                 .chain(),
         )
-        .add_systems(EguiPrimaryContextPass, ui_example_system)
+        .add_systems(EguiPrimaryContextPass, toolbar::bottom_toolbar_system)
         .run();
-}
-
-fn ui_example_system(mut contexts: EguiContexts) -> Result {
-    egui::Window::new("Hello").show(contexts.ctx_mut()?, |ui| {
-        ui.label("world");
-    });
-    Ok(())
 }

@@ -3,11 +3,11 @@ use bevy::prelude::*;
 use glam::IVec2;
 
 use crate::object_system::{
-    FreeformObjectWorldRes, HoveredObjectRes, InteractionMode, InteractionModeRes, ObjectTypesRes,
-    PlacementRotationRes,
+    FreeformObjectWorldRes, HoveredObjectRes, ObjectTypesRes, PlacementRotationRes,
 };
 use crate::selection::CursorHitRes;
 use crate::terrain_renderer::{LoadedChunkEntities, TerrainWorldRes};
+use crate::toolbar::{ToolbarMode, ToolbarState};
 
 #[derive(Resource, Default)]
 pub(crate) struct HologramPreviewRes {
@@ -203,7 +203,7 @@ pub(crate) fn update_hologram_preview(
     asset_server: Res<AssetServer>,
     types: Res<ObjectTypesRes>,
     objects: Res<FreeformObjectWorldRes>,
-    mode: Res<InteractionModeRes>,
+    toolbar: Res<ToolbarState>,
     hit: Res<CursorHitRes>,
     placement_rot: Res<PlacementRotationRes>,
     hologram_materials: Res<HologramMaterialsRes>,
@@ -211,8 +211,11 @@ pub(crate) fn update_hologram_preview(
     children: Query<&Children>,
     mut q_materials: Query<&mut MeshMaterial3d<StandardMaterial>>,
 ) {
-    // Only show hologram in build mode with a valid cursor hit.
-    let show = mode.0 == InteractionMode::Build && hit.world.is_some();
+    // Only show hologram in construction mode with a valid cursor hit.
+    let (show, object_to_preview) = match toolbar.mode {
+        ToolbarMode::Construct { object } if hit.world.is_some() => (true, Some(object)),
+        _ => (false, None),
+    };
     if !show {
         if let Some(e) = preview.entity.take() {
             despawn_recursive(&mut commands, &children, e);
@@ -220,7 +223,11 @@ pub(crate) fn update_hologram_preview(
         return;
     }
 
-    let Some(spec) = types.registry.get(types.test_building) else {
+    let Some(object_type) = object_to_preview else {
+        return;
+    };
+
+    let Some(spec) = types.registry.get(object_type) else {
         return;
     };
     if spec.gltf.trim().is_empty() {
@@ -241,7 +248,7 @@ pub(crate) fn update_hologram_preview(
 
     let can_place = objects
         .0
-        .can_place_non_overlapping(&types.registry, types.test_building, hit_world);
+        .can_place_non_overlapping(&types.registry, object_type, hit_world);
 
     let chosen_material = if can_place {
         &hologram_materials.valid

@@ -728,6 +728,7 @@ use crate::TerrainConfigRes;
 use crate::selection::{CursorHitRes, TileDoubleClicked};
 use crate::terrain_renderer::TerrainWorldRes;
 use crate::camera::UiInputCaptureRes;
+use crate::toolbar::{ToolbarMode, ToolbarState};
 
 #[derive(Resource)]
 pub(crate) struct ObjectWorldRes(pub(crate) ObjectWorld);
@@ -752,15 +753,6 @@ pub(crate) struct ObjectTypesRes {
     pub(crate) test_building: ObjectTypeId,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InteractionMode {
-    Build,
-    Destroy,
-}
-
-#[derive(Resource, Clone, Copy, Debug)]
-pub(crate) struct InteractionModeRes(pub(crate) InteractionMode);
-
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub(crate) struct HoveredObjectRes(pub(crate) Option<ObjectHandle>);
 
@@ -771,7 +763,6 @@ pub(crate) fn setup_object_world(mut commands: Commands, config: Res<TerrainConf
         config.0.tile_size,
     )));
     commands.insert_resource(PlacementRotationRes::default());
-    commands.insert_resource(InteractionModeRes(InteractionMode::Build));
     commands.insert_resource(HoveredObjectRes::default());
 }
 
@@ -880,23 +871,6 @@ pub(crate) fn update_placement_rotation(
     }
 }
 
-pub(crate) fn update_interaction_mode(
-    keys: Res<ButtonInput<KeyCode>>,
-    mut mode: ResMut<InteractionModeRes>,
-    ui_capture: Res<UiInputCaptureRes>,
-) {
-    if ui_capture.keyboard {
-        return;
-    }
-
-    if keys.just_pressed(KeyCode::Digit1) {
-        mode.0 = InteractionMode::Build;
-    }
-    if keys.just_pressed(KeyCode::Digit2) {
-        mode.0 = InteractionMode::Destroy;
-    }
-}
-
 pub(crate) fn update_hovered_object(
     hit: Res<CursorHitRes>,
     objects: Res<FreeformObjectWorldRes>,
@@ -914,7 +888,7 @@ pub(crate) fn update_hovered_object(
 pub(crate) fn handle_build_destroy_click(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     hit: Res<CursorHitRes>,
-    mode: Res<InteractionModeRes>,
+    toolbar: Res<ToolbarState>,
     placement_rot: Res<PlacementRotationRes>,
     types: Res<ObjectTypesRes>,
     mut objects: ResMut<FreeformObjectWorldRes>,
@@ -929,21 +903,22 @@ pub(crate) fn handle_build_destroy_click(
         return;
     }
 
-    match mode.0 {
-        InteractionMode::Build => {
+    match toolbar.mode {
+        ToolbarMode::Construct { object } => {
             let Some(world) = hit.world else { return; };
             if objects
                 .0
-                .can_place_non_overlapping(&types.registry, types.test_building, world)
+                .can_place_non_overlapping(&types.registry, object, world)
             {
-                let _ = objects.0.place(types.test_building, world, placement_rot.yaw);
+                let _ = objects.0.place(object, world, placement_rot.yaw);
             }
         }
-        InteractionMode::Destroy => {
+        ToolbarMode::Destroy => {
             if let Some(h) = hovered.0 {
                 let _ = objects.0.remove(h);
             }
         }
+        ToolbarMode::None => {}
     }
 }
 
