@@ -109,15 +109,19 @@ pub(crate) fn bottom_toolbar_system(
                     .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(95, 95, 95)))
                     .corner_radius(6)
                     .show(ui, |ui| {
+                        // Constrain both min and max width to toolbar_width
                         ui.set_min_size(egui::vec2(toolbar_width, secondary_height));
+                        ui.set_max_width(toolbar_width);
 
                         let selected_object = match toolbar.mode {
                             ToolbarMode::Construct { object } => object,
                             _ => None,
                         };
 
+                        // Constrain the scroll area width as well
                         egui::ScrollArea::horizontal()
                             .auto_shrink([false, true])
+                            .max_width(toolbar_width)
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     for id in types.available.iter().copied() {
