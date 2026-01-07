@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiPrimaryContextPass};
 
 mod camera;
 mod terrain;
@@ -32,7 +33,9 @@ fn main() {
         }))
         .insert_resource(camera::TopDownCameraSettings::default())
         .insert_resource(selection::CursorHitRes::default())
+        .insert_resource(camera::UiInputCaptureRes::default())
         .add_plugins(DefaultPlugins)
+        .add_plugins(EguiPlugin::default())
         .add_systems(
             Startup,
             (
@@ -47,6 +50,7 @@ fn main() {
         .add_systems(
             Update,
             (
+                camera::update_ui_input_capture,
                 camera::top_down_camera_input,
                 camera::update_top_down_camera,
                 selection::update_cursor_hit,
@@ -62,5 +66,13 @@ fn main() {
             )
                 .chain(),
         )
+        .add_systems(EguiPrimaryContextPass, ui_example_system)
         .run();
+}
+
+fn ui_example_system(mut contexts: EguiContexts) -> Result {
+    egui::Window::new("Hello").show(contexts.ctx_mut()?, |ui| {
+        ui.label("world");
+    });
+    Ok(())
 }

@@ -727,6 +727,7 @@ use serde::Deserialize;
 use crate::TerrainConfigRes;
 use crate::selection::{CursorHitRes, TileDoubleClicked};
 use crate::terrain_renderer::TerrainWorldRes;
+use crate::camera::UiInputCaptureRes;
 
 #[derive(Resource)]
 pub(crate) struct ObjectWorldRes(pub(crate) ObjectWorld);
@@ -855,7 +856,12 @@ pub(crate) fn update_placement_rotation(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     mut rot: ResMut<PlacementRotationRes>,
+    ui_capture: Res<UiInputCaptureRes>,
 ) {
+    if ui_capture.keyboard {
+        return;
+    }
+
     let mut delta: f32 = 0.0;
     if keys.pressed(KeyCode::KeyR) {
         delta += 1.0;
@@ -877,7 +883,12 @@ pub(crate) fn update_placement_rotation(
 pub(crate) fn update_interaction_mode(
     keys: Res<ButtonInput<KeyCode>>,
     mut mode: ResMut<InteractionModeRes>,
+    ui_capture: Res<UiInputCaptureRes>,
 ) {
+    if ui_capture.keyboard {
+        return;
+    }
+
     if keys.just_pressed(KeyCode::Digit1) {
         mode.0 = InteractionMode::Build;
     }
@@ -908,7 +919,12 @@ pub(crate) fn handle_build_destroy_click(
     types: Res<ObjectTypesRes>,
     mut objects: ResMut<FreeformObjectWorldRes>,
     hovered: Res<HoveredObjectRes>,
+    ui_capture: Res<UiInputCaptureRes>,
 ) {
+    if ui_capture.pointer {
+        return;
+    }
+
     if !mouse_buttons.just_pressed(MouseButton::Left) {
         return;
     }

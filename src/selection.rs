@@ -4,6 +4,7 @@ use bevy::asset::RenderAssetUsages;
 use glam::{IVec2, Vec2 as GVec2, Vec3 as GVec3};
 use crate::camera::TopDownCamera;
 use crate::terrain_renderer::TerrainWorldRes;
+use crate::camera::UiInputCaptureRes;
 
 
 #[derive(Resource, Default, Clone, Copy, Debug)]
@@ -18,7 +19,13 @@ pub(crate) fn update_cursor_hit(
     camera_q: Query<(&Camera, &GlobalTransform), With<TopDownCamera>>,
     terrain: Res<TerrainWorldRes>,
     mut hit: ResMut<CursorHitRes>,
+    ui_capture: Res<UiInputCaptureRes>,
 ) {
+    if ui_capture.pointer {
+        hit.world = None;
+        return;
+    }
+
     let window = match windows.single() {
         Ok(w) => w,
         Err(_) => {

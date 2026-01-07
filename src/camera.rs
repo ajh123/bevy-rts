@@ -1,5 +1,33 @@
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
+use bevy_egui::EguiContexts;
+
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub(crate) struct UiInputCaptureRes {
+    /// True when egui wants to consume mouse/pointer input.
+    pub(crate) pointer: bool,
+    /// True when egui wants to consume keyboard input (typically when editing text).
+    pub(crate) keyboard: bool,
+}
+
+pub(crate) fn update_ui_input_capture(mut contexts: EguiContexts, mut capture: ResMut<UiInputCaptureRes>) {
+    let ctx = match contexts.ctx_mut() {
+        Ok(ctx) => ctx,
+        Err(_) => {
+            capture.pointer = false;
+            capture.keyboard = false;
+            return;
+        }
+    };
+
+    // Pointer capture: egui wants pointer OR cursor is over egui.
+    // (The "over area" check avoids world clicks when hovering UI widgets.)
+    capture.pointer = ctx.wants_pointer_input() || ctx.is_pointer_over_area();
+
+    // Keyboard capture: egui wants keyboard (this is usually true when a text field is active).
+    capture.keyboard = ctx.wants_keyboard_input();
+}
+
 
 #[derive(Component)]
 pub struct Viewer;
@@ -61,45 +89,54 @@ pub fn top_down_camera_input(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut settings: ResMut<TopDownCameraSettings>,
     mut q_focus: Query<&mut Transform, With<Viewer>>,
+    ui_capture: Res<UiInputCaptureRes>,
 ) {
     let mut focus = match q_focus.single_mut() {
         Ok(t) => t,
         Err(_) => return,
     };
 
-    // Rotate around focus
-    if keys.pressed(KeyCode::KeyQ) {
-        settings.yaw += settings.rotate_speed * time.delta_secs();
-    }
-    if keys.pressed(KeyCode::KeyE) {
-        settings.yaw -= settings.rotate_speed * time.delta_secs();
+    // Keyboard input: ignore while egui is actively consuming keyboard input (e.g. text field).
+    if !ui_capture.keyboard {
+        // Rotate around focus
+        if keys.pressed(KeyCode::KeyQ) {
+            settings.yaw += settings.rotate_speed * time.delta_secs();
+        }
+        if keys.pressed(KeyCode::KeyE) {
+            settings.yaw -= settings.rotate_speed * time.delta_secs();
+        }
     }
 
-    // Zoom
-    let mut scroll: f32 = 0.0;
-    for ev in mouse_wheel.read() {
-        scroll += ev.y;
-    }
-    if scroll.abs() > 0.0 {
-        // Exponential-ish feel, similar to city builder cameras.
-        let factor = (1.0 - scroll * settings.zoom_speed).clamp(0.2, 5.0);
-        settings.distance = (settings.distance * factor)
-            .clamp(settings.min_distance, settings.max_distance);
+    // Pointer input: ignore while cursor is over / interacting with egui.
+    if !ui_capture.pointer {
+        // Zoom
+        let mut scroll: f32 = 0.0;
+        for ev in mouse_wheel.read() {
+            scroll += ev.y;
+        }
+        if scroll.abs() > 0.0 {
+            // Exponential-ish feel, similar to city builder cameras.
+            let factor = (1.0 - scroll * settings.zoom_speed).clamp(0.2, 5.0);
+            settings.distance = (settings.distance * factor)
+                .clamp(settings.min_distance, settings.max_distance);
+        }
     }
 
     // Pan (keyboard) on XZ plane, relative to camera yaw.
     let mut input = Vec2::ZERO;
-    if keys.pressed(KeyCode::KeyW) {
-        input.y += 1.0;
-    }
-    if keys.pressed(KeyCode::KeyS) {
-        input.y -= 1.0;
-    }
-    if keys.pressed(KeyCode::KeyA) {
-        input.x += 1.0;
-    }
-    if keys.pressed(KeyCode::KeyD) {
-        input.x -= 1.0;
+    if !ui_capture.keyboard {
+        if keys.pressed(KeyCode::KeyW) {
+            input.y += 1.0;
+        }
+        if keys.pressed(KeyCode::KeyS) {
+            input.y -= 1.0;
+        }
+        if keys.pressed(KeyCode::KeyA) {
+            input.x += 1.0;
+        }
+        if keys.pressed(KeyCode::KeyD) {
+            input.x -= 1.0;
+        }
     }
 
     let yaw_rot = Quat::from_rotation_y(settings.yaw);
@@ -118,16 +155,18 @@ pub fn top_down_camera_input(
     }
 
     // Pan (mouse drag): middle mouse button drags the world under the cursor.
-    if mouse_buttons.pressed(MouseButton::Middle) {
-        let mut drag = Vec2::ZERO;
-        for ev in mouse_motion.read() {
-            drag += ev.delta;
-        }
-        if drag.length_squared() > 0.0 {
-            let scale = settings.mouse_pan_sensitivity * (settings.distance / 80.0);
-            // Screen-space: +x right, +y up. Dragging right should move focus left.
-            let delta = (-right * drag.x + forward * drag.y) * scale;
-            focus.translation += Vec3::new(delta.x, 0.0, delta.z);
+    if !ui_capture.pointer {
+        if mouse_buttons.pressed(MouseButton::Middle) {
+            let mut drag = Vec2::ZERO;
+            for ev in mouse_motion.read() {
+                drag += ev.delta;
+            }
+            if drag.length_squared() > 0.0 {
+                let scale = settings.mouse_pan_sensitivity * (settings.distance / 80.0);
+                // Screen-space: +x right, +y up. Dragging right should move focus left.
+                let delta = (-right * drag.x + forward * drag.y) * scale;
+                focus.translation += Vec3::new(delta.x, 0.0, delta.z);
+            }
         }
     }
 }
