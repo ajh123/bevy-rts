@@ -213,7 +213,9 @@ pub(crate) fn update_hologram_preview(
 ) {
     // Only show hologram in construction mode with a valid cursor hit.
     let (show, object_to_preview) = match toolbar.mode {
-        ToolbarMode::Construct { object } if hit.world.is_some() => (true, Some(object)),
+        ToolbarMode::Construct {
+            object: Some(object),
+        } if hit.world.is_some() => (true, Some(object)),
         _ => (false, None),
     };
     if !show {

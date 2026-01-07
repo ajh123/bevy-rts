@@ -750,7 +750,13 @@ impl Default for PlacementRotationRes {
 #[derive(Resource)]
 pub(crate) struct ObjectTypesRes {
     pub(crate) registry: ObjectTypeRegistry,
-    pub(crate) test_building: ObjectTypeId,
+    pub(crate) available: Vec<ObjectTypeId>,
+}
+
+impl ObjectTypesRes {
+    pub(crate) fn default_object(&self) -> Option<ObjectTypeId> {
+        self.available.first().copied()
+    }
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
@@ -768,7 +774,7 @@ pub(crate) fn setup_object_world(mut commands: Commands, config: Res<TerrainConf
 
 pub(crate) fn setup_object_types(mut commands: Commands, config: Res<TerrainConfigRes>) {
     let mut registry = ObjectTypeRegistry::default();
-    let mut loaded_ids = Vec::new();
+    let mut available = Vec::new();
 
     for def in load_object_type_defs_from_dir("assets/objects")
         .expect("failed to load object type definitions from assets/objects")
@@ -789,32 +795,26 @@ pub(crate) fn setup_object_types(mut commands: Commands, config: Res<TerrainConf
             render_offset,
             hover_radius,
         });
-        loaded_ids.push((id, registry.get(id).map(|s| s.name.clone()).unwrap_or_default()));
+        available.push(id);
     }
 
-    // Keep existing demo behavior: double-click toggles one specific object type.
-    // Prefer "Small House" if present, otherwise fall back to the first loaded.
-    let test_building = loaded_ids
-        .iter()
-        .find(|(_, name)| name == "Small House")
-        .map(|(id, _)| *id)
-        .or_else(|| loaded_ids.first().map(|(id, _)| *id))
-        .unwrap_or_else(|| {
-            // If no files exist, keep behavior deterministic.
-            registry.register(ObjectTypeSpec {
-                name: "MissingObjectDefs".to_string(),
-                gltf: "".to_string(),
-                footprint_tiles: IVec2::new(1, 1),
-                gltf_bounds: None,
-                render_scale: Vec3::ONE,
-                render_offset: Vec3::ZERO,
-                hover_radius: 1.0,
-            })
+    if available.is_empty() {
+        // If no files exist, keep behavior deterministic.
+        let id = registry.register(ObjectTypeSpec {
+            name: "MissingObjectDefs".to_string(),
+            gltf: "".to_string(),
+            footprint_tiles: IVec2::new(1, 1),
+            gltf_bounds: None,
+            render_scale: Vec3::ONE,
+            render_offset: Vec3::ZERO,
+            hover_radius: 1.0,
         });
+        available.push(id);
+    }
 
     commands.insert_resource(ObjectTypesRes {
         registry,
-        test_building,
+        available,
     });
 }
 
@@ -826,6 +826,10 @@ pub(crate) fn toggle_test_object_on_double_click(
     terrain: Res<TerrainWorldRes>,
     placement_rot: Res<PlacementRotationRes>,
 ) {
+    let Some(default_object) = types.default_object() else {
+        return;
+    };
+
     for e in ev.read() {
         if objects.0.object_at_tile(e.tile).is_some() {
             let _ = objects.0.remove_at_tile(e.tile);
@@ -834,7 +838,7 @@ pub(crate) fn toggle_test_object_on_double_click(
                 .0
                 .try_place_freeform(
                     &types.registry,
-                    types.test_building,
+                    default_object,
                     e.world,
                     placement_rot.yaw,
                     terrain.0.config.tile_size,
@@ -905,6 +909,9 @@ pub(crate) fn handle_build_destroy_click(
 
     match toolbar.mode {
         ToolbarMode::Construct { object } => {
+            let Some(object) = object else {
+                return;
+            };
             let Some(world) = hit.world else { return; };
             if objects
                 .0
