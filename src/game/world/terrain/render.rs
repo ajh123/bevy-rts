@@ -12,9 +12,7 @@ use super::world::{ChunkMeshData, TerrainAction, TerrainWorld};
 use crate::game::camera::Viewer; // Ensure camera defines this
 
 #[derive(Component)]
-pub struct Chunk {
-    pub coord: IVec2,
-}
+pub struct Chunk;
 
 pub fn setup_terrain_renderer(
     mut commands: Commands,
@@ -130,7 +128,7 @@ fn spawn_chunk(
 
     commands
         .spawn((
-            Chunk { coord },
+            Chunk,
             Mesh3d(mesh_handle),
             MeshMaterial3d(atlas.material.clone()),
             Transform::from_translation(Vec3::new(origin.x, origin.y, origin.z)),

@@ -5,7 +5,7 @@ use crate::game::camera::UiInputCaptureRes;
 use crate::game::input::CursorHitRes;
 use crate::game::ui::toolbar::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool};
 use crate::game::utils::highlight;
-use crate::game::world::objects::system::{FreeformObjectWorldRes, ObjectTypesRes};
+use crate::game::world::objects::system::{ObjectTypesRes, ObjectWorldRes};
 use crate::game::world::objects::types::ObjectTypeId;
 use crate::game::world::terrain::types::TerrainWorldRes;
 
@@ -126,7 +126,7 @@ fn update_hologram_preview(
     terrain: Res<TerrainWorldRes>,
     asset_server: Res<AssetServer>,
     types: Res<ObjectTypesRes>,
-    objects: Res<FreeformObjectWorldRes>,
+    objects: Res<ObjectWorldRes>,
     toolbar: Res<ToolbarState>,
     construction: Res<ConstructionStateRes>,
     hit: Res<CursorHitRes>,
@@ -206,7 +206,7 @@ fn handle_construction_click(
     construction: Res<ConstructionStateRes>,
     placement_rot: Res<PlacementRotationRes>,
     types: Res<ObjectTypesRes>,
-    mut objects: ResMut<FreeformObjectWorldRes>,
+    mut objects: ResMut<ObjectWorldRes>,
     ui_capture: Res<UiInputCaptureRes>,
 ) {
     if ui_capture.pointer {

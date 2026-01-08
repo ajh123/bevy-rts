@@ -1,30 +1,16 @@
-#![allow(dead_code, unused)]
 use bevy::prelude::*;
-use glam::{IVec2, Mat4, Vec2, Vec3};
+use glam::Vec3;
 use serde::Deserialize;
 
-use crate::game::camera::UiInputCaptureRes;
 use crate::game::input::CursorHitRes;
-use crate::game::ui::toolbar::ToolbarState;
 use crate::game::utils::gltf;
 use crate::game::world::terrain::types::TerrainConfigRes;
 
-use super::storage::FreeformObjectWorld;
-use super::types::{GltfBounds, ObjectHandle, ObjectTypeId, ObjectTypeRegistry, ObjectTypeSpec};
+use super::storage::ObjectWorld;
+use super::types::{ObjectHandle, ObjectTypeId, ObjectTypeRegistry, ObjectTypeSpec};
 
 #[derive(Resource)]
-pub struct FreeformObjectWorldRes(pub(crate) FreeformObjectWorld);
-
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct PlacementRotationRes {
-    pub yaw: f32,
-}
-
-impl Default for PlacementRotationRes {
-    fn default() -> Self {
-        Self { yaw: 0.0 }
-    }
-}
+pub struct ObjectWorldRes(pub(crate) ObjectWorld);
 
 #[derive(Resource)]
 pub struct ObjectTypesRes {
@@ -32,20 +18,11 @@ pub struct ObjectTypesRes {
     pub available: Vec<ObjectTypeId>,
 }
 
-impl ObjectTypesRes {
-    pub fn default_object(&self) -> Option<ObjectTypeId> {
-        self.available.first().copied()
-    }
-}
-
 #[derive(Resource, Clone, Copy, Debug, Default)]
 pub struct HoveredObjectRes(pub Option<ObjectHandle>);
 
-pub fn setup_object_world(mut commands: Commands, config: Res<TerrainConfigRes>) {
-    commands.insert_resource(FreeformObjectWorldRes(FreeformObjectWorld::new(
-        config.0.chunk_size,
-        config.0.tile_size,
-    )));
+pub fn setup_object_world(mut commands: Commands) {
+    commands.insert_resource(ObjectWorldRes(ObjectWorld::new()));
     commands.insert_resource(HoveredObjectRes::default());
 }
 
@@ -66,7 +43,6 @@ pub fn setup_object_types(mut commands: Commands, config: Res<TerrainConfigRes>)
         let id = registry.register(ObjectTypeSpec {
             name: def.name,
             gltf: def.gltf,
-            footprint_tiles: IVec2::new(1, 1),
             gltf_bounds: bounds,
             render_scale,
             render_offset,
@@ -80,7 +56,6 @@ pub fn setup_object_types(mut commands: Commands, config: Res<TerrainConfigRes>)
         let id = registry.register(ObjectTypeSpec {
             name: "MissingObjectDefs".to_string(),
             gltf: "".to_string(),
-            footprint_tiles: IVec2::new(1, 1),
             gltf_bounds: None,
             render_scale: Vec3::ONE,
             render_offset: Vec3::ZERO,
@@ -97,7 +72,7 @@ pub fn setup_object_types(mut commands: Commands, config: Res<TerrainConfigRes>)
 
 pub fn update_hovered_object(
     hit: Res<CursorHitRes>,
-    objects: Res<FreeformObjectWorldRes>,
+    objects: Res<ObjectWorldRes>,
     types: Res<ObjectTypesRes>,
     mut hovered: ResMut<HoveredObjectRes>,
 ) {

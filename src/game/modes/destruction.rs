@@ -2,9 +2,7 @@ use bevy::prelude::*;
 
 use crate::game::camera::UiInputCaptureRes;
 use crate::game::ui::toolbar::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool};
-use crate::game::world::objects::system::{
-    FreeformObjectWorldRes, HoveredObjectRes, ObjectTypesRes,
-};
+use crate::game::world::objects::system::{HoveredObjectRes, ObjectTypesRes, ObjectWorldRes};
 use crate::game::world::terrain::types::TerrainWorldRes;
 
 pub struct DestructionModePlugin;
@@ -43,7 +41,7 @@ fn draw_destruction_ui(toolbar: Res<ToolbarState>, mut action_text: ResMut<Toolb
 fn draw_hover_highlight(
     mut gizmos: Gizmos,
     hovered: Res<HoveredObjectRes>,
-    objects: Res<FreeformObjectWorldRes>,
+    objects: Res<ObjectWorldRes>,
     types: Res<ObjectTypesRes>,
     toolbar: Res<ToolbarState>,
     terrain: Res<TerrainWorldRes>,
@@ -85,7 +83,7 @@ fn draw_hover_highlight(
 fn handle_destruction_click(
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     toolbar: Res<ToolbarState>,
-    mut objects: ResMut<FreeformObjectWorldRes>,
+    mut objects: ResMut<ObjectWorldRes>,
     hovered: Res<HoveredObjectRes>,
     ui_capture: Res<UiInputCaptureRes>,
 ) {

@@ -1,4 +1,4 @@
-use glam::{IVec2, Vec3};
+use glam::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ObjectHandle {
@@ -14,8 +14,6 @@ pub struct ObjectTypeSpec {
     pub name: String,
     /// Path relative to the Bevy asset root (the `assets/` folder).
     pub gltf: String,
-    #[allow(dead_code)]
-    pub footprint_tiles: IVec2,
     pub gltf_bounds: Option<GltfBounds>,
     pub render_scale: Vec3,
     pub render_offset: Vec3,
@@ -66,7 +64,7 @@ impl ObjectTypeRegistry {
 }
 
 #[derive(Clone, Debug)]
-pub struct FreeformObjectInstance {
+pub struct ObjectInstance {
     pub type_id: ObjectTypeId,
     pub position_world: Vec3,
     pub yaw: f32,

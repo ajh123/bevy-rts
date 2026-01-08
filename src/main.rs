@@ -37,6 +37,7 @@ fn main() {
         .insert_resource(toolbar::ToolbarState::default())
         .init_resource::<toolbar::ToolbarRegistry>()
         .init_resource::<toolbar::ToolbarActionText>()
+        .init_resource::<objects::render::ObjectEntityMap>()
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin::default())
         .add_plugins(modes::construction::ConstructionModePlugin)
@@ -61,7 +62,7 @@ fn main() {
                 toolbar::update_toolbar_state_from_hotkeys,
                 objects::system::update_hovered_object,
                 terrain::render::stream_chunks,
-                objects::render::spawn_objects_for_chunks,
+                objects::render::sync_objects,
             )
                 .chain(),
         )
