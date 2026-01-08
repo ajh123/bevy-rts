@@ -1,4 +1,4 @@
-use super::types::{TerrainConfig, TileTypes};
+use crate::types::{TerrainConfig, TileTypes};
 use glam::{IVec2, Vec2, Vec3};
 use parrot::Perlin;
 use std::collections::{HashSet, VecDeque};

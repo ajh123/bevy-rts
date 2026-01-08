@@ -2,14 +2,14 @@ use bevy::asset::RenderAssetUsages;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use glam::{IVec2, Vec2, Vec3};
+use glam::{IVec2, Vec3};
 
-use super::types::TileTypes;
-use super::types::{
-    LoadedChunkEntities, TerrainAtlas, TerrainConfigRes, TerrainWorldRes, TileTypesRes,
+use crate::types::TileTypes;
+use crate::types::{
+    LoadedChunkEntities, TerrainAtlas, TerrainConfigRes, TerrainViewerWorldXzRes, TerrainWorldRes,
+    TileTypesRes,
 };
-use super::world::{ChunkMeshData, TerrainAction, TerrainWorld};
-use crate::game::camera::Viewer; // Ensure camera defines this
+use crate::world::{ChunkMeshData, TerrainAction, TerrainWorld};
 
 #[derive(Component)]
 pub struct Chunk;
@@ -75,16 +75,9 @@ pub fn stream_chunks(
     tiles: Res<TileTypesRes>,
     mut terrain: ResMut<TerrainWorldRes>,
     mut loaded: ResMut<LoadedChunkEntities>,
-    q_viewer: Query<&Transform, With<Viewer>>,
+    viewer: Res<TerrainViewerWorldXzRes>,
 ) {
-    let viewer_pos = match q_viewer.single() {
-        Ok(v) => v.translation,
-        Err(_) => return,
-    };
-
-    terrain
-        .0
-        .set_viewer_world_xz(Vec2::new(viewer_pos.x, viewer_pos.z));
+    terrain.0.set_viewer_world_xz(viewer.0);
     let actions = terrain.0.tick();
 
     for action in actions {

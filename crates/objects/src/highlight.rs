@@ -6,17 +6,36 @@ use bevy::prelude::*;
 pub fn update_hologram(
     commands: &mut Commands,
     preview_entity: Option<Entity>,
+    preview_scene_child: Option<Entity>,
     scene_handle: Handle<Scene>,
     transform: Transform,
-) -> Entity {
-    if let Some(e) = preview_entity {
+    scene_offset_local: Vec3,
+) -> (Entity, Entity) {
+    let root = if let Some(e) = preview_entity {
         commands.entity(e).insert(transform);
         e
     } else {
+        commands.spawn((transform, Visibility::default())).id()
+    };
+
+    let child = if let Some(c) = preview_scene_child {
         commands
-            .spawn((SceneRoot(scene_handle), transform, Visibility::default()))
-            .id()
-    }
+            .entity(c)
+            .insert(Transform::from_translation(scene_offset_local));
+        c
+    } else {
+        let c = commands
+            .spawn((
+                SceneRoot(scene_handle),
+                Transform::from_translation(scene_offset_local),
+                Visibility::default(),
+            ))
+            .id();
+        commands.entity(root).add_child(c);
+        c
+    };
+
+    (root, child)
 }
 
 /// Recursively applies a material override to all MeshMaterial3d<StandardMaterial> components

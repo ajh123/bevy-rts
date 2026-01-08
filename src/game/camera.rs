@@ -1,35 +1,6 @@
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy_egui::EguiContexts;
-
-#[derive(Resource, Default, Clone, Copy, Debug)]
-pub(crate) struct UiInputCaptureRes {
-    /// True when egui wants to consume mouse/pointer input.
-    pub(crate) pointer: bool,
-    /// True when egui wants to consume keyboard input (typically when editing text).
-    pub(crate) keyboard: bool,
-}
-
-pub(crate) fn update_ui_input_capture(
-    mut contexts: EguiContexts,
-    mut capture: ResMut<UiInputCaptureRes>,
-) {
-    let ctx = match contexts.ctx_mut() {
-        Ok(ctx) => ctx,
-        Err(_) => {
-            capture.pointer = false;
-            capture.keyboard = false;
-            return;
-        }
-    };
-
-    // Pointer capture: egui wants pointer OR cursor is over egui.
-    // (The "over area" check avoids world clicks when hovering UI widgets.)
-    capture.pointer = ctx.wants_pointer_input() || ctx.is_pointer_over_area();
-
-    // Keyboard capture: egui wants keyboard (this is usually true when a text field is active).
-    capture.keyboard = ctx.wants_keyboard_input();
-}
+use ui::UiInputCaptureRes;
 
 #[derive(Component)]
 pub struct Viewer;
@@ -72,15 +43,6 @@ pub fn setup_viewer(mut commands: Commands) {
     commands.spawn((Viewer, Transform::from_xyz(0.0, 0.0, 0.0)));
 
     commands.spawn((TopDownCamera, Camera3d::default(), Transform::default()));
-
-    commands.spawn((
-        DirectionalLight {
-            illuminance: 20_000.0,
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_rotation(Quat::from_euler(EulerRot::XYZ, -0.8, 0.7, 0.0)),
-    ));
 }
 
 pub fn top_down_camera_input(

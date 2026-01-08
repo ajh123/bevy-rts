@@ -1,0 +1,11 @@
+[package]
+name = "terrain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { version = "0.17.3" }
+glam = "0.30.9"
+parrot-rng = "0.7.1"
+ron = "0.12.0"
+serde = { version = "1.0.228", features = ["derive"] }

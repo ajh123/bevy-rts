@@ -1,9 +1,9 @@
 use bevy::prelude::*;
 
-use crate::game::camera::UiInputCaptureRes;
-use crate::game::ui::toolbar::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool};
-use crate::game::world::objects::system::{HoveredObjectRes, ObjectTypesRes, ObjectWorldRes};
-use crate::game::world::terrain::types::TerrainWorldRes;
+use objects::highlight;
+use objects::system::{HoveredObjectRes, ObjectKind, ObjectTypesRes};
+use terrain::types::TerrainWorldRes;
+use ui::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool, UiInputCaptureRes};
 
 pub struct DestructionModePlugin;
 
@@ -41,37 +41,37 @@ fn draw_destruction_ui(toolbar: Res<ToolbarState>, mut action_text: ResMut<Toolb
 fn draw_hover_highlight(
     mut gizmos: Gizmos,
     hovered: Res<HoveredObjectRes>,
-    objects: Res<ObjectWorldRes>,
     types: Res<ObjectTypesRes>,
     toolbar: Res<ToolbarState>,
     terrain: Res<TerrainWorldRes>,
+    q_objects: Query<(&Transform, &ObjectKind)>,
 ) {
     if toolbar.active_tool.as_deref() != Some("destroy") {
         return;
     }
 
-    let Some(handle) = hovered.0 else {
+    let Some(entity) = hovered.0 else {
         return;
     };
 
-    let Some(instance) = objects.0.get(handle) else {
+    let Ok((transform, kind)) = q_objects.get(entity) else {
         return;
     };
 
-    let Some(spec) = types.registry.get(instance.type_id) else {
+    let Some(spec) = types.registry.get(kind.0) else {
         return;
     };
 
     let base_h = terrain
         .0
-        .sample_height_at(instance.position_world.x, instance.position_world.z);
+        .sample_height_at(transform.translation.x, transform.translation.z);
 
     gizmos.circle(
         Isometry3d::new(
             Vec3::new(
-                instance.position_world.x,
+                transform.translation.x,
                 base_h + 0.1,
-                instance.position_world.z,
+                transform.translation.z,
             ),
             Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2),
         ),
@@ -81,11 +81,12 @@ fn draw_hover_highlight(
 }
 
 fn handle_destruction_click(
+    mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     toolbar: Res<ToolbarState>,
-    mut objects: ResMut<ObjectWorldRes>,
     hovered: Res<HoveredObjectRes>,
     ui_capture: Res<UiInputCaptureRes>,
+    children: Query<&Children>,
 ) {
     if ui_capture.pointer {
         return;
@@ -96,8 +97,8 @@ fn handle_destruction_click(
     }
 
     if toolbar.active_tool.as_deref() == Some("destroy") {
-        if let Some(h) = hovered.0 {
-            let _ = objects.0.remove(h);
+        if let Some(entity) = hovered.0 {
+            highlight::despawn_recursive(&mut commands, &children, entity);
         }
     }
 }

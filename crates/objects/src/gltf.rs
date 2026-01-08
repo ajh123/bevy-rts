@@ -1,48 +1,24 @@
-use crate::game::world::objects::types::GltfBounds;
+use crate::types::GltfBounds;
 use bevy::prelude::*;
 use glam::{Mat4, Vec3};
 use serde_json::Value;
 
-/// Computes a standard rendering scale, offset, and collision radius from glTF AABB bounds.
-///
-/// This is used to normalize models that might be authored at weird scales or offsets.
-pub fn compute_render_params(
-    _tile_size: f32,
-    bounds: Option<GltfBounds>,
-    scale: Vec3,
-) -> (Vec3, Vec3, f32) {
-    // Use raw glTF units as-authored (no tile-size-based scaling).
-    // We still compute a reasonable render offset and hover radius from bounds when available.
+pub fn compute_hover_radius(bounds: Option<GltfBounds>, scale: Vec3) -> f32 {
     if let Some(b) = bounds {
-        let s = scale;
-
-        // Center in XZ and put the model's bottom on the ground (y = 0).
-        let center = b.center();
-        let min_y = b.min.y;
-        let offset = Vec3::new(-center.x * s.x, -min_y * s.y, -center.z * s.z);
-
-        // Conservative radius in XZ for hover + collision.
         let size = b.size();
-        let rx = 0.5 * size.x.abs() * s.x.abs();
-        let rz = 0.5 * size.z.abs() * s.z.abs();
-        let radius = (rx * rx + rz * rz).sqrt().max(0.1);
-
-        (s, offset, radius)
+        let rx = 0.5 * size.x.abs() * scale.x.abs();
+        let rz = 0.5 * size.z.abs() * scale.z.abs();
+        (rx * rx + rz * rz).sqrt().max(0.1)
     } else {
-        // With unknown bounds we can't infer a size; keep scale 1 and pick a small sane radius.
-        (scale, Vec3::ZERO, 1.0)
+        1.0
     }
 }
 
-/// Attempts to parse a .gltf file (not .glb) to determine its Axis Aligned Bounding Box.
-/// This parses the JSON structure manually to find accessor min/max values.
 pub fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfBounds, String> {
-    // Only supports JSON .gltf for now.
     if !asset_path.to_ascii_lowercase().ends_with(".gltf") {
         return Err("only .gltf is supported for bounds computation".to_string());
     }
 
-    // Convert Bevy asset path (relative to assets/) into a filesystem path.
     let fs_path = std::path::Path::new("assets").join(asset_path);
     let text = std::fs::read_to_string(&fs_path)
         .map_err(|e| format!("failed to read gltf '{}': {e}", fs_path.display()))?;
@@ -59,7 +35,6 @@ pub fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfB
         .and_then(|v| v.as_array())
         .ok_or_else(|| "gltf missing 'accessors'".to_string())?;
 
-    // Find accessor indices used as POSITION for primitives.
     let mut position_accessor_indices: Vec<usize> = Vec::new();
     for mesh in meshes {
         let primitives = match mesh.get("primitives").and_then(|v| v.as_array()) {
@@ -81,7 +56,6 @@ pub fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfB
         return Err("gltf has no POSITION accessors".to_string());
     }
 
-    // Merge AABB across all POSITION accessors.
     let mut local_min = Vec3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
     let mut local_max = Vec3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
 
@@ -118,7 +92,6 @@ pub fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfB
         return Err("failed to compute finite bounds from accessors".to_string());
     }
 
-    // Apply default scene's root node matrix (if present) to get bounds in parent space.
     let root_transform = try_read_default_scene_root_matrix(&doc).unwrap_or(Mat4::IDENTITY);
     let (min_p, max_p) = transform_aabb(root_transform, local_min, local_max);
 
@@ -133,7 +106,6 @@ fn try_read_default_scene_root_matrix(doc: &Value) -> Option<Mat4> {
     let scenes = doc.get("scenes").and_then(|v| v.as_array())?;
     let scene = scenes.get(scene_index)?;
     let root_nodes = scene.get("nodes").and_then(|v| v.as_array())?;
-    // Handle the common case: exactly one root node with a matrix.
     let root_idx = root_nodes.get(0)?.as_u64()? as usize;
     let nodes = doc.get("nodes").and_then(|v| v.as_array())?;
     let root = nodes.get(root_idx)?;
@@ -144,7 +116,6 @@ fn try_read_default_scene_root_matrix(doc: &Value) -> Option<Mat4> {
             for (i, v) in m.iter().enumerate() {
                 f[i] = v.as_f64()? as f32;
             }
-            // glTF matrices are column-major.
             return Some(Mat4::from_cols_array(&f));
         }
     }

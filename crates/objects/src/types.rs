@@ -1,12 +1,6 @@
 use glam::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ObjectHandle {
-    pub index: u32,
-    pub generation: u32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ObjectTypeId(pub u16);
 
 #[derive(Clone, Debug)]
@@ -16,7 +10,6 @@ pub struct ObjectTypeSpec {
     pub gltf: String,
     pub gltf_bounds: Option<GltfBounds>,
     pub render_scale: Vec3,
-    pub render_offset: Vec3,
     pub hover_radius: f32,
 }
 
@@ -36,10 +29,6 @@ impl GltfBounds {
     }
 }
 
-/// Registry for object types.
-///
-/// Instances store only an `ObjectTypeId`.
-/// This keeps tile->object lookup fast and makes types data-driven.
 #[derive(Default)]
 pub struct ObjectTypeRegistry {
     specs: Vec<Option<ObjectTypeSpec>>,
@@ -61,11 +50,4 @@ impl ObjectTypeRegistry {
     pub fn get(&self, id: ObjectTypeId) -> Option<&ObjectTypeSpec> {
         self.specs.get(id.0 as usize)?.as_ref()
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ObjectInstance {
-    pub type_id: ObjectTypeId,
-    pub position_world: Vec3,
-    pub yaw: f32,
 }

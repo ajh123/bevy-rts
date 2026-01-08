@@ -1,7 +1,11 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::game::camera::UiInputCaptureRes;
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct UiInputCaptureRes {
+    pub pointer: bool,
+    pub keyboard: bool,
+}
 
 #[derive(Resource, Default)]
 pub struct ToolbarRegistry {
@@ -34,7 +38,7 @@ fn format_key(key: KeyCode) -> String {
     s
 }
 
-pub(crate) fn update_toolbar_state_from_hotkeys(
+pub fn update_toolbar_state_from_hotkeys(
     keys: Res<ButtonInput<KeyCode>>,
     mut toolbar: ResMut<ToolbarState>,
     registry: Res<ToolbarRegistry>,
@@ -57,7 +61,7 @@ pub(crate) fn update_toolbar_state_from_hotkeys(
     }
 }
 
-pub(crate) fn bottom_toolbar_system(
+pub fn bottom_toolbar_system(
     mut contexts: EguiContexts,
     mut toolbar: ResMut<ToolbarState>,
     registry: Res<ToolbarRegistry>,

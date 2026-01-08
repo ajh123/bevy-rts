@@ -1,6 +1,7 @@
-use super::world::TerrainWorld;
+use crate::world::TerrainWorld;
 use bevy::prelude::*;
 use glam::IVec2;
+use glam::Vec2;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -112,3 +113,7 @@ pub struct TerrainAtlas {
 pub struct LoadedChunkEntities {
     pub entities: HashMap<IVec2, Entity>,
 }
+
+/// Set by the root game crate to indicate where the viewer is (XZ plane).
+#[derive(Resource, Default, Clone, Copy, Debug)]
+pub struct TerrainViewerWorldXzRes(pub Vec2);

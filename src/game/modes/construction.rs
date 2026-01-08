@@ -1,13 +1,11 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
-use crate::game::camera::UiInputCaptureRes;
-use crate::game::input::CursorHitRes;
-use crate::game::ui::toolbar::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool};
-use crate::game::utils::highlight;
-use crate::game::world::objects::system::{ObjectTypesRes, ObjectWorldRes};
-use crate::game::world::objects::types::ObjectTypeId;
-use crate::game::world::terrain::types::TerrainWorldRes;
+use objects::ObjectTypeId;
+use objects::highlight;
+use objects::system::{CursorHitRes, ObjectKind, ObjectTypesRes};
+use terrain::types::TerrainWorldRes;
+use ui::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool, UiInputCaptureRes};
 
 #[derive(Resource, Default)]
 pub struct ConstructionStateRes {
@@ -29,6 +27,8 @@ pub struct HologramMaterialsRes {
 #[derive(Resource, Default)]
 pub struct HologramPreviewRes {
     pub entity: Option<Entity>,
+    pub scene_child: Option<Entity>,
+    pub object_type: Option<ObjectTypeId>,
 }
 
 pub struct ConstructionModePlugin;
@@ -67,9 +67,11 @@ fn setup_construction_toolbar(mut registry: ResMut<ToolbarRegistry>) {
 fn reset_on_tool_change(
     toolbar: Res<ToolbarState>,
     mut construction: ResMut<ConstructionStateRes>,
+    mut preview: ResMut<HologramPreviewRes>,
 ) {
     if toolbar.is_changed() && toolbar.active_tool.as_deref() != Some("construct") {
         construction.selected = None;
+        preview.object_type = None;
     }
 }
 
@@ -126,7 +128,7 @@ fn update_hologram_preview(
     terrain: Res<TerrainWorldRes>,
     asset_server: Res<AssetServer>,
     types: Res<ObjectTypesRes>,
-    objects: Res<ObjectWorldRes>,
+    q_objects: Query<(&Transform, &ObjectKind)>,
     toolbar: Res<ToolbarState>,
     construction: Res<ConstructionStateRes>,
     hit: Res<CursorHitRes>,
@@ -143,12 +145,23 @@ fn update_hologram_preview(
         if let Some(e) = preview.entity.take() {
             highlight::despawn_recursive(&mut commands, &children, e);
         }
+        preview.scene_child = None;
+        preview.object_type = None;
         return;
     }
 
     let Some(object_type) = construction.selected else {
         return;
     };
+
+    // If the selected object changes, respawn the preview so we don't keep the old scene.
+    if preview.object_type != Some(object_type) {
+        if let Some(e) = preview.entity.take() {
+            highlight::despawn_recursive(&mut commands, &children, e);
+        }
+        preview.scene_child = None;
+        preview.object_type = Some(object_type);
+    }
 
     let Some(spec) = types.registry.get(object_type) else {
         return;
@@ -161,22 +174,18 @@ fn update_hologram_preview(
     };
 
     let base_h = terrain.0.sample_height_at(hit_world.x, hit_world.z);
+    let pos_world = Vec3::new(hit_world.x, base_h, hit_world.z);
     let rot = Quat::from_rotation_y(placement_rot.yaw);
-    let rotated_offset = rot
-        * Vec3::new(
-            spec.render_offset.x,
-            spec.render_offset.y,
-            spec.render_offset.z,
-        );
-
-    let pos_world = Vec3::new(hit_world.x, base_h, hit_world.z) + rotated_offset;
     let transform = Transform::from_translation(pos_world)
         .with_rotation(rot)
         .with_scale(spec.render_scale);
 
-    let can_place = objects
-        .0
-        .can_place_non_overlapping(&types.registry, object_type, hit_world);
+    let can_place = objects::system::can_place_non_overlapping(
+        &types.registry,
+        object_type,
+        hit_world,
+        q_objects.iter().map(|(t, k)| (k.0, t.translation)),
+    );
 
     let chosen_material = if can_place {
         &hologram_materials.valid
@@ -186,9 +195,18 @@ fn update_hologram_preview(
 
     let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
 
-    let preview_entity =
-        highlight::update_hologram(&mut commands, preview.entity, scene_handle, transform);
+    let scene_offset_local = objects::system::compute_scene_local_offset(spec);
+
+    let (preview_entity, scene_child) = highlight::update_hologram(
+        &mut commands,
+        preview.entity,
+        preview.scene_child,
+        scene_handle,
+        transform,
+        scene_offset_local,
+    );
     preview.entity = Some(preview_entity);
+    preview.scene_child = Some(scene_child);
 
     highlight::apply_hologram_material_recursive(
         &children,
@@ -200,13 +218,16 @@ fn update_hologram_preview(
 }
 
 fn handle_construction_click(
+    mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     hit: Res<CursorHitRes>,
     toolbar: Res<ToolbarState>,
     construction: Res<ConstructionStateRes>,
     placement_rot: Res<PlacementRotationRes>,
     types: Res<ObjectTypesRes>,
-    mut objects: ResMut<ObjectWorldRes>,
+    q_objects: Query<(&Transform, &ObjectKind)>,
+    terrain: Res<TerrainWorldRes>,
+    asset_server: Res<AssetServer>,
     ui_capture: Res<UiInputCaptureRes>,
 ) {
     if ui_capture.pointer {
@@ -225,11 +246,23 @@ fn handle_construction_click(
         let Some(world) = hit.world else {
             return;
         };
-        if objects
-            .0
-            .can_place_non_overlapping(&types.registry, object, world)
-        {
-            let _ = objects.0.place(object, world, placement_rot.yaw);
+        let can_place = objects::system::can_place_non_overlapping(
+            &types.registry,
+            object,
+            world,
+            q_objects.iter().map(|(t, k)| (k.0, t.translation)),
+        );
+        if can_place {
+            let base_h = terrain.0.sample_height_at(world.x, world.z);
+            let position = Vec3::new(world.x, base_h, world.z);
+            let _ = objects::system::spawn_object(
+                &mut commands,
+                &types.registry,
+                &asset_server,
+                object,
+                position,
+                placement_rot.yaw,
+            );
         }
     }
 }

@@ -1,14 +1,8 @@
 use bevy::prelude::*;
-use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
 mod game;
 
-use game::camera;
-use game::input;
-use game::modes;
-use game::ui::toolbar;
-use game::world::objects;
-use game::world::terrain;
+use game::GamePlugin;
 
 fn main() {
     App::new()
@@ -31,41 +25,6 @@ fn main() {
                 height_scale: 8.0,
             },
         ))
-        .insert_resource(camera::TopDownCameraSettings::default())
-        .insert_resource(input::CursorHitRes::default())
-        .insert_resource(camera::UiInputCaptureRes::default())
-        .insert_resource(toolbar::ToolbarState::default())
-        .init_resource::<toolbar::ToolbarRegistry>()
-        .init_resource::<toolbar::ToolbarActionText>()
-        .init_resource::<objects::render::ObjectEntityMap>()
-        .add_plugins(DefaultPlugins)
-        .add_plugins(EguiPlugin::default())
-        .add_plugins(modes::construction::ConstructionModePlugin)
-        .add_plugins(modes::destruction::DestructionModePlugin)
-        .add_systems(
-            Startup,
-            (
-                camera::setup_viewer,
-                terrain::render::setup_terrain_renderer,
-                objects::system::setup_object_world,
-                objects::system::setup_object_types,
-            )
-                .chain(),
-        )
-        .add_systems(
-            Update,
-            (
-                camera::update_ui_input_capture,
-                camera::top_down_camera_input,
-                camera::update_top_down_camera,
-                input::update_cursor_hit,
-                toolbar::update_toolbar_state_from_hotkeys,
-                objects::system::update_hovered_object,
-                terrain::render::stream_chunks,
-                objects::render::sync_objects,
-            )
-                .chain(),
-        )
-        .add_systems(EguiPrimaryContextPass, toolbar::bottom_toolbar_system)
+        .add_plugins(GamePlugin)
         .run();
 }
