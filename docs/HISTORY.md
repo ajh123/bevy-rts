@@ -11,7 +11,7 @@
 
 ## Phase 2 (6th-7th January 2026): Bevy-based Renderer with Object Placement and GUI
 
-- **Pass 1**: Complete nuking of the project. Bevy integration, camera + modular code (commits `aacdf31`, `34b4fea`).  
+- **Pass 1**: Complete nuking of the project. Rewrite all features with Bevy (commits `aacdf31`, `34b4fea`).  
 ![Screenshot](./Screenshot%202026-01-06%20145802.png)
 
 - **Pass 2**: Object placement system, data-driven design (commits `1e34079`, `8fd6af3`).  

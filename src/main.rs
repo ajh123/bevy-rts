@@ -1,17 +1,14 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
-mod camera;
-mod terrain;
-mod terrain_renderer;
-mod tile_types;
-mod selection;
-mod object_system;
-mod object_renderer;
-mod toolbar;
+mod game;
 
-#[derive(Resource, Clone)]
-pub(crate) struct TerrainConfigRes(pub(crate) terrain::TerrainConfig);
+use game::camera;
+use game::input;
+use game::ui::toolbar;
+use game::world::terrain;
+use game::world::objects;
+use game::modes;
 
 fn main() {
     App::new()
@@ -21,7 +18,7 @@ fn main() {
             brightness: 30.0,
             affects_lightmapped_meshes: false,
         })
-        .insert_resource(TerrainConfigRes(terrain::TerrainConfig {
+        .insert_resource(terrain::types::TerrainConfigRes(terrain::types::TerrainConfig {
             seed: 12345,
             chunk_size: 32,
             tile_size: 2.0,
@@ -33,20 +30,22 @@ fn main() {
             height_scale: 8.0,
         }))
         .insert_resource(camera::TopDownCameraSettings::default())
-        .insert_resource(selection::CursorHitRes::default())
+        .insert_resource(input::CursorHitRes::default())
         .insert_resource(camera::UiInputCaptureRes::default())
         .insert_resource(toolbar::ToolbarState::default())
+        .init_resource::<toolbar::ToolbarRegistry>()
+        .init_resource::<toolbar::ToolbarActionText>()
         .add_plugins(DefaultPlugins)
         .add_plugins(EguiPlugin::default())
+        .add_plugins(modes::construction::ConstructionModePlugin)
+        .add_plugins(modes::destruction::DestructionModePlugin)
         .add_systems(
             Startup,
             (
                 camera::setup_viewer,
-                terrain_renderer::setup_terrain_renderer,
-                object_system::setup_object_world,
-                object_system::setup_object_types,
-                toolbar::init_toolbar_state,
-                object_renderer::setup_object_renderer
+                terrain::render::setup_terrain_renderer,
+                objects::system::setup_object_world,
+                objects::system::setup_object_types,
            )
                 .chain(),
         )
@@ -56,18 +55,13 @@ fn main() {
                 camera::update_ui_input_capture,
                 camera::top_down_camera_input,
                 camera::update_top_down_camera,
-                selection::update_cursor_hit,
+                input::update_cursor_hit,
                 toolbar::update_toolbar_state_from_hotkeys,
-                object_system::update_placement_rotation,
-                object_system::update_hovered_object,
-                object_system::handle_build_destroy_click,
-                terrain_renderer::stream_chunks,
-                object_renderer::sync_object_chunk_roots,
-                object_renderer::update_hologram_preview,
-                object_renderer::update_object_chunk_visuals,
-                object_renderer::draw_hover_highlight,
+                objects::system::update_hovered_object,
+                terrain::render::stream_chunks,
+                objects::render::spawn_objects_for_chunks,
             )
-                .chain(),
+             .chain(),
         )
         .add_systems(EguiPrimaryContextPass, toolbar::bottom_toolbar_system)
         .run();

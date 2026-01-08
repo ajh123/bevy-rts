@@ -1,33 +1,17 @@
-use crate::camera::Viewer;
-use crate::terrain::{TerrainAction, TerrainWorld};
-use crate::TerrainConfigRes;
-use bevy::asset::RenderAssetUsages;
-use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
+use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use glam::{IVec2, Vec2};
-use std::collections::HashMap;
+use bevy::asset::RenderAssetUsages;
+use glam::{IVec2, Vec2, Vec3};
 
-#[derive(Resource)]
-pub(crate) struct TileTypesRes(pub(crate) crate::tile_types::TileTypes);
+use crate::game::camera::Viewer; // Ensure camera defines this
+use super::world::{TerrainAction, TerrainWorld, ChunkMeshData};
+use super::types::{TerrainConfigRes, TerrainWorldRes, TileTypesRes, TerrainAtlas, LoadedChunkEntities};
+use super::types::TileTypes;
 
 #[derive(Component)]
-pub(crate) struct Chunk {
-    #[allow(dead_code)]
-    coord: IVec2,
-}
-
-#[derive(Resource)]
-pub(crate) struct TerrainWorldRes(pub(crate) TerrainWorld);
-
-#[derive(Resource)]
-pub(crate) struct TerrainAtlas {
-    material: Handle<StandardMaterial>,
-}
-
-#[derive(Resource, Default)]
-pub(crate) struct LoadedChunkEntities {
-    pub(crate) entities: HashMap<IVec2, Entity>,
+pub struct Chunk {
+    pub coord: IVec2,
 }
 
 pub fn setup_terrain_renderer(
@@ -39,7 +23,7 @@ pub fn setup_terrain_renderer(
     commands.insert_resource(TerrainWorldRes(TerrainWorld::new(config.0.clone())));
     commands.insert_resource(LoadedChunkEntities::default());
 
-    let tile_types = crate::tile_types::TileTypes::load_from_ron_file("assets/tiles.ron")
+    let tile_types = TileTypes::load_from_ron_file("assets/tiles.ron")
         .expect("failed to load tile types from assets/tiles.ron");
     let atlas_colors: Vec<Color> = tile_types
         .tiles
@@ -136,7 +120,7 @@ fn spawn_chunk(
     meshes: &mut Assets<Mesh>,
     terrain: &TerrainWorld,
     atlas: &TerrainAtlas,
-    tiles: &crate::tile_types::TileTypes,
+    tiles: &TileTypes,
     coord: IVec2,
 ) -> Entity {
     let origin = terrain.chunk_origin_world(coord);
@@ -154,7 +138,7 @@ fn spawn_chunk(
         .id()
 }
 
-fn mesh_from_chunk_mesh_data(data: crate::terrain::ChunkMeshData) -> Mesh {
+fn mesh_from_chunk_mesh_data(data: ChunkMeshData) -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, data.positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals);

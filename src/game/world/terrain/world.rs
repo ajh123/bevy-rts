@@ -1,19 +1,7 @@
 use glam::{IVec2, Vec2, Vec3};
 use parrot::Perlin;
 use std::collections::{HashSet, VecDeque};
-
-#[derive(Clone, Debug)]
-pub struct TerrainConfig {
-    pub seed: u64,
-    pub chunk_size: i32,
-    pub tile_size: f32,
-    pub view_distance_chunks: i32,
-    pub chunk_spawn_budget_per_frame: usize,
-    pub noise_base_frequency: f64,
-    pub noise_octaves: u32,
-    pub noise_persistence: f64,
-    pub height_scale: f32,
-}
+use super::types::{TerrainConfig, TileTypes};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TerrainAction {
@@ -138,26 +126,10 @@ impl TerrainWorld {
         sample_height(&self.config, &self.perlin, world_x, world_z)
     }
 
-    /// Convert world XZ coordinates to tile coordinates (floored to local tile indices within a chunk).
-    pub fn world_to_tile_coord(&self, world_x: f32, world_z: f32) -> IVec2 {
-        let tile_size = self.config.tile_size;
-        let x = (world_x / tile_size).floor() as i32;
-        let z = (world_z / tile_size).floor() as i32;
-        IVec2::new(x, z)
-    }
-
-    /// Get the center world position of a tile given its coordinates.
-    pub fn tile_center(&self, tile_coord: IVec2) -> Vec2 {
-        let tile_size = self.config.tile_size;
-        let x = tile_coord.x as f32 * tile_size + tile_size * 0.5;
-        let z = tile_coord.y as f32 * tile_size + tile_size * 0.5;
-        Vec2::new(x, z)
-    }
-
     pub fn build_chunk_mesh_data(
         &self,
         coord: IVec2,
-        tiles: &crate::tile_types::TileTypes,
+        tiles: &TileTypes,
     ) -> ChunkMeshData {
         let chunk_world_size = self.config.chunk_size as f32 * self.config.tile_size;
         let chunk_origin_x = coord.x as f32 * chunk_world_size;
@@ -181,10 +153,10 @@ impl TerrainWorld {
         let mut normals_grid: Vec<[f32; 3]> = vec![[0.0, 1.0, 0.0]; stride * stride];
         for gz in 0..=n {
             for gx in 0..=n {
-                let gx_l = gx.saturating_sub(1);
-                let gx_r = (gx + 1).min(n);
-                let gz_d = gz.saturating_sub(1);
-                let gz_u = (gz + 1).min(n);
+                let gx_l = (gx as usize).saturating_sub(1);
+                let gx_r = (gx + 1).min(n as usize);
+                let gz_d = (gz as usize).saturating_sub(1);
+                let gz_u = (gz + 1).min(n as usize);
 
                 let h_l = heights[gz * stride + gx_l];
                 let h_r = heights[gz * stride + gx_r];
@@ -284,4 +256,3 @@ fn sample_height(config: &TerrainConfig, perlin: &Perlin, world_x: f32, world_z:
     let value = if norm > 0.0 { sum / norm } else { 0.0 };
     (value as f32) * config.height_scale
 }
-

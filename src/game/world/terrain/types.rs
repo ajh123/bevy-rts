@@ -1,4 +1,25 @@
+use bevy::prelude::*;
+use std::collections::HashMap;
+use glam::IVec2;
 use serde::Deserialize;
+use super::world::TerrainWorld;
+
+// --- Config ---
+
+#[derive(Clone, Debug)]
+pub struct TerrainConfig {
+    pub seed: u64,
+    pub chunk_size: i32,
+    pub tile_size: f32,
+    pub view_distance_chunks: i32,
+    pub chunk_spawn_budget_per_frame: usize,
+    pub noise_base_frequency: f64,
+    pub noise_octaves: u32,
+    pub noise_persistence: f64,
+    pub height_scale: f32,
+}
+
+// --- Tiles ---
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct TileTypesFile {
@@ -67,4 +88,25 @@ impl TileTypes {
 
         Ok(())
     }
+}
+
+// --- Resources ---
+
+#[derive(Resource, Clone)]
+pub struct TerrainConfigRes(pub TerrainConfig);
+
+#[derive(Resource)]
+pub struct TerrainWorldRes(pub TerrainWorld);
+
+#[derive(Resource)]
+pub struct TileTypesRes(pub TileTypes);
+
+#[derive(Resource)]
+pub struct TerrainAtlas {
+    pub material: Handle<StandardMaterial>,
+}
+
+#[derive(Resource, Default)]
+pub struct LoadedChunkEntities {
+    pub entities: HashMap<IVec2, Entity>,
 }
