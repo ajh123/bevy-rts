@@ -1,11 +1,13 @@
-use crate::gltf;
 use crate::types::{ObjectTypeId, ObjectTypeRegistry, ObjectTypeSpec};
 use bevy::prelude::*;
+use bevy::tasks::{IoTaskPool, Task};
+use bevy::tasks::futures_lite::future;
 use glam::Vec3;
-use serde::Deserialize;
 
+use crate::assets::ObjectTypeDefAsset;
+use crate::spatial::SpatialHashGrid;
 #[derive(Resource, Default, Clone, Copy, Debug)]
-pub struct CursorHitRes {
+pub struct CursorHit {
     pub world: Option<Vec3>,
 }
 
@@ -13,54 +15,143 @@ pub struct CursorHitRes {
 pub struct ObjectKind(pub ObjectTypeId);
 
 #[derive(Resource)]
-pub struct ObjectTypesRes {
+pub struct ObjectTypes {
     pub registry: ObjectTypeRegistry,
     pub available: Vec<ObjectTypeId>,
+    pub max_hover_radius: f32,
 }
 
 #[derive(Resource, Clone, Copy, Debug, Default)]
-pub struct HoveredObjectRes(pub Option<Entity>);
+pub struct HoveredObject(pub Option<Entity>);
 
 pub fn setup_object_hovered(mut commands: Commands) {
-    commands.insert_resource(HoveredObjectRes::default());
+    commands.insert_resource(HoveredObject::default());
+}
+
+#[derive(Resource)]
+pub struct ObjectDefDiscoveryTask(pub Task<Result<Vec<String>, String>>);
+
+#[derive(Resource)]
+pub struct ObjectDefHandles {
+    pub handles: Vec<Handle<ObjectTypeDefAsset>>,
 }
 
 pub fn setup_object_types(mut commands: Commands) {
+    let pool = IoTaskPool::get();
+    let task = pool.spawn(async move { discover_object_def_asset_paths("assets/objects") });
+    commands.insert_resource(ObjectDefDiscoveryTask(task));
+}
+
+pub fn finish_object_types_load(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    defs: Res<Assets<ObjectTypeDefAsset>>,
+    task: Option<ResMut<ObjectDefDiscoveryTask>>,
+    handles: Option<Res<ObjectDefHandles>>,
+) {
+    if task.is_some() {
+        let Some(mut task) = task else {
+            return;
+        };
+
+        let Some(result) = future::block_on(future::poll_once(&mut task.0)) else {
+            return;
+        };
+
+        commands.remove_resource::<ObjectDefDiscoveryTask>();
+
+        match result {
+            Ok(paths) => {
+                let mut handles = Vec::new();
+                for p in paths {
+                    handles.push(asset_server.load::<ObjectTypeDefAsset>(p));
+                }
+                commands.insert_resource(ObjectDefHandles { handles });
+            }
+            Err(e) => {
+                error!("{e}");
+                commands.insert_resource(make_missing_object_defs());
+            }
+        }
+
+        return;
+    }
+
+    let Some(handles) = handles else {
+        return;
+    };
+
+    if handles.handles.is_empty() {
+        commands.remove_resource::<ObjectDefHandles>();
+        commands.insert_resource(make_missing_object_defs());
+        return;
+    }
+
+    // Wait until all assets are loaded (or failed).
+    for h in &handles.handles {
+        if defs.get(h).is_some() {
+            continue;
+        }
+
+        // If a load failed, don't wait forever.
+        if let Some(state) = asset_server.get_load_state(h.id()) {
+            match state {
+                bevy::asset::LoadState::Failed(_) => {
+                    error!("failed to load object def asset");
+                    commands.remove_resource::<ObjectDefHandles>();
+                    commands.insert_resource(make_missing_object_defs());
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        return;
+    }
+
     let mut registry = ObjectTypeRegistry::default();
     let mut available = Vec::new();
+    let mut max_hover_radius = 0.0f32;
 
-    for def in load_object_type_defs_from_dir("assets/objects")
-        .expect("failed to load object type definitions from assets/objects")
-    {
-        let bounds = gltf::try_compute_gltf_bounds_in_parent_space(&def.gltf).ok();
-        let render_scale = Vec3::new(def.scale.0, def.scale.1, def.scale.2);
-        let hover_radius = gltf::compute_hover_radius(bounds, render_scale);
+    for h in &handles.handles {
+        let Some(def) = defs.get(h) else {
+            continue;
+        };
 
+        max_hover_radius = max_hover_radius.max(def.hover_radius.max(0.1));
         let id = registry.register(ObjectTypeSpec {
-            name: def.name,
-            gltf: def.gltf,
-            gltf_bounds: bounds,
-            render_scale,
-            hover_radius,
+            name: def.name.clone(),
+            gltf: def.gltf.clone(),
+            render_scale: def.render_scale,
+            hover_radius: def.hover_radius,
+            scene_offset_local: def.scene_offset_local,
         });
         available.push(id);
     }
 
-    if available.is_empty() {
-        let id = registry.register(ObjectTypeSpec {
-            name: "MissingObjectDefs".to_string(),
-            gltf: "".to_string(),
-            gltf_bounds: None,
-            render_scale: Vec3::ONE,
-            hover_radius: 1.0,
-        });
-        available.push(id);
-    }
-
-    commands.insert_resource(ObjectTypesRes {
+    commands.remove_resource::<ObjectDefHandles>();
+    commands.insert_resource(ObjectTypes {
         registry,
         available,
+        max_hover_radius,
     });
+}
+
+fn make_missing_object_defs() -> ObjectTypes {
+    let mut registry = ObjectTypeRegistry::default();
+    let id = registry.register(ObjectTypeSpec {
+        name: "MissingObjectDefs".to_string(),
+        gltf: "".to_string(),
+        render_scale: Vec3::ONE,
+        hover_radius: 1.0,
+        scene_offset_local: Vec3::ZERO,
+    });
+
+    ObjectTypes {
+        registry,
+        available: vec![id],
+        max_hover_radius: 1.0,
+    }
 }
 
 pub fn spawn_object(
@@ -82,9 +173,6 @@ pub fn spawn_object(
         .with_rotation(rot)
         .with_scale(spec.render_scale);
 
-    // Offset only the rendered scene so the logical root stays at the object's center.
-    let scene_offset_local = compute_scene_local_offset(spec);
-
     let root = commands
         .spawn((
             ObjectKind(type_id),
@@ -94,25 +182,13 @@ pub fn spawn_object(
         .with_children(|parent| {
             parent.spawn((
                 SceneRoot(scene_handle),
-                Transform::from_translation(scene_offset_local),
+                Transform::from_translation(spec.scene_offset_local),
                 Visibility::default(),
             ));
         })
         .id();
 
     Some(root)
-}
-
-/// Computes the local translation offset to apply to the rendered scene (as a child)
-/// so that the model is visually centered on the parent's origin.
-///
-/// Parent entity should carry the desired world translation/rotation/scale.
-pub fn compute_scene_local_offset(spec: &ObjectTypeSpec) -> Vec3 {
-    // Pivot point in scene-local coordinates that we want to align with the parent origin.
-    // - X/Z: bounds center so rotations happen around the footprint center.
-    // - Y: bounds min so the model's base rests on Y=0 relative to the parent.
-    let pivot = spec.gltf_bounds.map_or(Vec3::ZERO, |b| Vec3::new(b.center().x, b.min.y, b.center().z));
-    -pivot
 }
 
 pub fn can_place_non_overlapping(
@@ -142,12 +218,47 @@ pub fn can_place_non_overlapping(
     true
 }
 
+pub fn can_place_non_overlapping_spatial(
+    types: &ObjectTypeRegistry,
+    new_type: ObjectTypeId,
+    position_world: Vec3,
+    grid: &SpatialHashGrid,
+    q_objects: &Query<(&Transform, &ObjectKind)>,
+) -> bool {
+    let Some(new_spec) = types.get(new_type) else {
+        return false;
+    };
+
+    let new_r = new_spec.hover_radius.max(0.1);
+    let candidates = grid.query_candidates(glam::Vec2::new(position_world.x, position_world.z), new_r);
+
+    for e in candidates {
+        let Ok((t, k)) = q_objects.get(e) else {
+            continue;
+        };
+        let Some(spec) = types.get(k.0) else {
+            continue;
+        };
+        let other_r = spec.hover_radius.max(0.1);
+        if circles_overlap(position_world, new_r, t.translation, other_r) {
+            return false;
+        }
+    }
+
+    true
+}
+
 pub fn update_hovered_object(
-    hit: Res<CursorHitRes>,
-    types: Res<ObjectTypesRes>,
+    hit: Res<CursorHit>,
+    types: Option<Res<ObjectTypes>>,
     q_objects: Query<(Entity, &Transform, &ObjectKind)>,
-    mut hovered: ResMut<HoveredObjectRes>,
+    grid: Res<SpatialHashGrid>,
+    mut hovered: ResMut<HoveredObject>,
 ) {
+    let Some(types) = types else {
+        hovered.0 = None;
+        return;
+    };
     let Some(world) = hit.world else {
         hovered.0 = None;
         return;
@@ -155,7 +266,12 @@ pub fn update_hovered_object(
 
     let mut best: Option<(Entity, f32)> = None;
 
-    for (entity, transform, kind) in q_objects.iter() {
+    let candidates = grid.query_candidates(glam::Vec2::new(world.x, world.z), types.max_hover_radius);
+
+    for entity in candidates {
+        let Ok((_e, transform, kind)) = q_objects.get(entity) else {
+            continue;
+        };
         let Some(spec) = types.registry.get(kind.0) else {
             continue;
         };
@@ -191,26 +307,9 @@ fn circles_overlap(a: Vec3, ar: f32, b: Vec3, br: f32) -> bool {
     dx * dx + dz * dz <= r * r
 }
 
-#[derive(Debug, Deserialize)]
-struct ObjectTypeDefFile {
-    name: String,
-    gltf: String,
-    #[serde(default = "default_object_scale")]
-    scale: Scale3,
-}
-
-#[derive(Clone, Copy, Debug, Deserialize)]
-struct Scale3(pub(crate) f32, pub(crate) f32, pub(crate) f32);
-
-fn default_object_scale() -> Scale3 {
-    Scale3(1.0, 1.0, 1.0)
-}
-
-fn load_object_type_defs_from_dir(
-    dir: impl AsRef<std::path::Path>,
-) -> Result<Vec<ObjectTypeDefFile>, String> {
+fn discover_object_def_asset_paths(dir: impl AsRef<std::path::Path>) -> Result<Vec<String>, String> {
     let dir = dir.as_ref();
-    let mut defs = Vec::new();
+    let mut out = Vec::new();
 
     let entries = std::fs::read_dir(dir)
         .map_err(|e| format!("failed to read object defs dir '{}': {e}", dir.display()))?;
@@ -222,22 +321,18 @@ fn load_object_type_defs_from_dir(
             continue;
         }
 
-        let text = std::fs::read_to_string(&path)
-            .map_err(|e| format!("failed to read object def '{}': {e}", path.display()))?;
-        let def: ObjectTypeDefFile = ron::from_str(&text)
-            .map_err(|e| format!("failed to parse object def '{}': {e}", path.display()))?;
-
-        if def.name.trim().is_empty() {
-            return Err(format!("object def '{}' has empty name", path.display()));
+        // Convert filesystem path under assets/ into an asset-relative path.
+        let rel = path
+            .strip_prefix("assets")
+            .map_err(|_| format!("object def '{}' is not under assets/", path.display()))?;
+        let mut s = rel.to_string_lossy().to_string();
+        // Bevy asset paths use '/' even on Windows.
+        s = s.replace('\\', "/");
+        if s.starts_with('/') {
+            s.remove(0);
         }
-        if def.gltf.trim().is_empty() {
-            return Err(format!(
-                "object def '{}' has empty gltf path",
-                path.display()
-            ));
-        }
-        defs.push(def);
+        out.push(s);
     }
 
-    Ok(defs)
+    Ok(out)
 }

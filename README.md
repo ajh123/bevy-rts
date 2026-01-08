@@ -11,8 +11,8 @@ Bevy RTS is a small real-time strategy (RTS) template built with the Bevy game e
 Clone and run (requires Rust and Cargo):
 
 ```powershell
-git clone <repo-url>
-cd rust-heightmap
+git clone https://github.com/ajh123/bevy-rts.git
+cd bevy-rts
 cargo run
 ```
 

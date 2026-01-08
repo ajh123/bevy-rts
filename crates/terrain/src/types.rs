@@ -1,4 +1,3 @@
-use crate::world::TerrainWorld;
 use bevy::prelude::*;
 use glam::IVec2;
 use glam::Vec2;
@@ -7,7 +6,7 @@ use std::collections::HashMap;
 
 // --- Config ---
 
-#[derive(Clone, Debug)]
+#[derive(Resource, Clone, Debug)]
 pub struct TerrainConfig {
     pub seed: u64,
     pub chunk_size: i32,
@@ -35,26 +34,12 @@ pub struct TileType {
     pub height_lt: f32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Resource, Clone, Debug)]
 pub struct TileTypes {
     pub tiles: Vec<TileType>,
 }
 
 impl TileTypes {
-    pub fn load_from_ron_file(path: impl AsRef<std::path::Path>) -> Result<Self, String> {
-        let path = path.as_ref();
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| format!("failed to read tile types file '{}': {e}", path.display()))?;
-
-        let parsed: TileTypesFile = ron::from_str(&text)
-            .map_err(|e| format!("failed to parse tile types file '{}': {e}", path.display()))?;
-
-        let tile_types = Self {
-            tiles: parsed.tiles,
-        };
-        tile_types.validate()?;
-        Ok(tile_types)
-    }
 
     pub fn tile_count_f32(&self) -> f32 {
         self.tiles.len() as f32
@@ -70,7 +55,7 @@ impl TileTypes {
         (self.tiles.len().saturating_sub(1)) as u32
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         if self.tiles.is_empty() {
             return Err("tile types file must define at least one tile".to_string());
         }
@@ -95,15 +80,6 @@ impl TileTypes {
 
 // --- Resources ---
 
-#[derive(Resource, Clone)]
-pub struct TerrainConfigRes(pub TerrainConfig);
-
-#[derive(Resource)]
-pub struct TerrainWorldRes(pub TerrainWorld);
-
-#[derive(Resource)]
-pub struct TileTypesRes(pub TileTypes);
-
 #[derive(Resource)]
 pub struct TerrainAtlas {
     pub material: Handle<StandardMaterial>,
@@ -116,4 +92,4 @@ pub struct LoadedChunkEntities {
 
 /// Set by the root game crate to indicate where the viewer is (XZ plane).
 #[derive(Resource, Default, Clone, Copy, Debug)]
-pub struct TerrainViewerWorldXzRes(pub Vec2);
+pub struct TerrainViewerWorldXz(pub Vec2);

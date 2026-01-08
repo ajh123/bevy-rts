@@ -1,6 +1,19 @@
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use ui::UiInputCaptureRes;
+use ui::UiInputCapture;
+
+use super::{StartupSet, UpdateSet};
+
+pub struct CameraPlugin;
+
+impl Plugin for CameraPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(TopDownCameraSettings::default())
+            .add_systems(Startup, setup_viewer.in_set(StartupSet::Camera))
+            .add_systems(Update, top_down_camera_input.in_set(UpdateSet::CameraInput))
+            .add_systems(Update, update_top_down_camera.in_set(UpdateSet::CameraUpdate));
+    }
+}
 
 #[derive(Component)]
 pub struct Viewer;
@@ -53,7 +66,7 @@ pub fn top_down_camera_input(
     mut mouse_motion: MessageReader<MouseMotion>,
     mut settings: ResMut<TopDownCameraSettings>,
     mut q_focus: Query<&mut Transform, With<Viewer>>,
-    ui_capture: Res<UiInputCaptureRes>,
+    ui_capture: Res<UiInputCapture>,
 ) {
     let mut focus = match q_focus.single_mut() {
         Ok(t) => t,

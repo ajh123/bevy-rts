@@ -1,4 +1,5 @@
 use crate::types::{TerrainConfig, TileTypes};
+use bevy::prelude::Resource;
 use glam::{IVec2, Vec2, Vec3};
 use parrot::Perlin;
 use std::collections::{HashSet, VecDeque};
@@ -25,6 +26,7 @@ struct ChunkStreamingState {
     pending_despawn: VecDeque<IVec2>,
 }
 
+#[derive(Resource)]
 pub struct TerrainWorld {
     pub config: TerrainConfig,
     perlin: Perlin,

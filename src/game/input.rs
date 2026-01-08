@@ -1,17 +1,32 @@
 use bevy::prelude::*;
 use glam::{Vec2, Vec3 as GVec3};
 
-use objects::system::CursorHitRes;
-use terrain::types::{TerrainViewerWorldXzRes, TerrainWorldRes};
-use ui::UiInputCaptureRes;
+use objects::system::CursorHit;
+use terrain::{TerrainViewerWorldXz, TerrainWorld};
+use ui::UiInputCapture;
 
 use crate::game::camera::TopDownCamera;
 use crate::game::camera::Viewer;
 use bevy_egui::EguiContexts;
 
+use super::UpdateSet;
+
+pub struct InputPlugin;
+
+impl Plugin for InputPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, update_ui_input_capture.in_set(UpdateSet::UiCapture))
+            .add_systems(Update, update_cursor_hit.in_set(UpdateSet::CursorHit))
+            .add_systems(
+                Update,
+                update_terrain_viewer_world_xz.in_set(UpdateSet::TerrainViewer),
+            );
+    }
+}
+
 pub(crate) fn update_ui_input_capture(
     mut contexts: EguiContexts,
-    mut capture: ResMut<UiInputCaptureRes>,
+    mut capture: ResMut<UiInputCapture>,
 ) {
     let ctx = match contexts.ctx_mut() {
         Ok(ctx) => ctx,
@@ -34,9 +49,9 @@ pub(crate) fn update_ui_input_capture(
 pub(crate) fn update_cursor_hit(
     windows: Query<&Window>,
     camera_q: Query<(&Camera, &GlobalTransform), With<TopDownCamera>>,
-    terrain: Res<TerrainWorldRes>,
-    mut hit: ResMut<CursorHitRes>,
-    ui_capture: Res<UiInputCaptureRes>,
+    terrain: Res<TerrainWorld>,
+    mut hit: ResMut<CursorHit>,
+    ui_capture: Res<UiInputCapture>,
 ) {
     if ui_capture.pointer {
         hit.world = None;
@@ -72,7 +87,7 @@ pub(crate) fn update_cursor_hit(
         }
     };
 
-    let Some(hit_point) = crate::game::physics::raycast::raycast_to_heightfield(&terrain.0, ray)
+    let Some(hit_point) = crate::game::physics::raycast::raycast_to_heightfield(&terrain, ray)
     else {
         hit.world = None;
         return;
@@ -83,7 +98,7 @@ pub(crate) fn update_cursor_hit(
 
 pub(crate) fn update_terrain_viewer_world_xz(
     q_viewer: Query<&Transform, With<Viewer>>,
-    mut viewer_xz: ResMut<TerrainViewerWorldXzRes>,
+    mut viewer_xz: ResMut<TerrainViewerWorldXz>,
 ) {
     let Ok(t) = q_viewer.single() else {
         return;

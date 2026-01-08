@@ -3,29 +3,30 @@ use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
 use objects::ObjectTypeId;
 use objects::highlight;
-use objects::system::{CursorHitRes, ObjectKind, ObjectTypesRes};
-use terrain::types::TerrainWorldRes;
-use ui::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool, UiInputCaptureRes};
+use objects::spatial::SpatialHashGrid;
+use objects::system::{CursorHit, ObjectKind, ObjectTypes};
+use terrain::TerrainWorld;
+use ui::{ToolId, ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool, UiInputCapture};
 
 #[derive(Resource, Default)]
-pub struct ConstructionStateRes {
+pub struct ConstructionState {
     /// Selected object for construction
     pub selected: Option<ObjectTypeId>,
 }
 
 #[derive(Resource, Default)]
-pub struct PlacementRotationRes {
+pub struct PlacementRotation {
     pub yaw: f32,
 }
 
 #[derive(Resource)]
-pub struct HologramMaterialsRes {
+pub struct HologramMaterials {
     pub valid: Handle<StandardMaterial>,
     pub blocked: Handle<StandardMaterial>,
 }
 
 #[derive(Resource, Default)]
-pub struct HologramPreviewRes {
+pub struct HologramPreview {
     pub entity: Option<Entity>,
     pub scene_child: Option<Entity>,
     pub object_type: Option<ObjectTypeId>,
@@ -35,9 +36,9 @@ pub struct ConstructionModePlugin;
 
 impl Plugin for ConstructionModePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<PlacementRotationRes>()
-            .init_resource::<HologramPreviewRes>()
-            .init_resource::<ConstructionStateRes>()
+        app.init_resource::<PlacementRotation>()
+            .init_resource::<HologramPreview>()
+            .init_resource::<ConstructionState>()
             .add_systems(
                 Startup,
                 (setup_construction_materials, setup_construction_toolbar),
@@ -57,7 +58,7 @@ impl Plugin for ConstructionModePlugin {
 
 fn setup_construction_toolbar(mut registry: ResMut<ToolbarRegistry>) {
     registry.tools.push(ToolbarTool {
-        id: "construct".to_string(),
+        id: ToolId::Construct,
         label: "Construct".to_string(),
         order: 0,
         key: Some(KeyCode::Digit1),
@@ -66,10 +67,10 @@ fn setup_construction_toolbar(mut registry: ResMut<ToolbarRegistry>) {
 
 fn reset_on_tool_change(
     toolbar: Res<ToolbarState>,
-    mut construction: ResMut<ConstructionStateRes>,
-    mut preview: ResMut<HologramPreviewRes>,
+    mut construction: ResMut<ConstructionState>,
+    mut preview: ResMut<HologramPreview>,
 ) {
-    if toolbar.is_changed() && toolbar.active_tool.as_deref() != Some("construct") {
+    if toolbar.is_changed() && toolbar.active_tool != Some(ToolId::Construct) {
         construction.selected = None;
         preview.object_type = None;
     }
@@ -79,7 +80,7 @@ fn setup_construction_materials(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    commands.insert_resource(HologramMaterialsRes {
+    commands.insert_resource(HologramMaterials {
         valid: materials.add(StandardMaterial {
             base_color: Color::hsla(180.0, 0.8, 0.5, 0.5),
             alpha_mode: AlphaMode::Blend,
@@ -98,8 +99,8 @@ fn setup_construction_materials(
 fn update_placement_rotation(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
-    mut rot: ResMut<PlacementRotationRes>,
-    ui_capture: Res<UiInputCaptureRes>,
+    mut rot: ResMut<PlacementRotation>,
+    ui_capture: Res<UiInputCapture>,
 ) {
     if ui_capture.keyboard {
         return;
@@ -125,20 +126,25 @@ fn update_placement_rotation(
 
 fn update_hologram_preview(
     mut commands: Commands,
-    terrain: Res<TerrainWorldRes>,
+    terrain: Res<TerrainWorld>,
     asset_server: Res<AssetServer>,
-    types: Res<ObjectTypesRes>,
+    types: Option<Res<ObjectTypes>>,
     q_objects: Query<(&Transform, &ObjectKind)>,
     toolbar: Res<ToolbarState>,
-    construction: Res<ConstructionStateRes>,
-    hit: Res<CursorHitRes>,
-    placement_rot: Res<PlacementRotationRes>,
-    hologram_materials: Res<HologramMaterialsRes>,
-    mut preview: ResMut<HologramPreviewRes>,
+    construction: Res<ConstructionState>,
+    hit: Res<CursorHit>,
+    placement_rot: Res<PlacementRotation>,
+    hologram_materials: Res<HologramMaterials>,
+    mut preview: ResMut<HologramPreview>,
     children: Query<&Children>,
     mut q_materials: Query<&mut MeshMaterial3d<StandardMaterial>>,
+    grid: Res<SpatialHashGrid>,
 ) {
-    let show = toolbar.active_tool.as_deref() == Some("construct")
+    let Some(types) = types else {
+        return;
+    };
+
+    let show = toolbar.active_tool == Some(ToolId::Construct)
         && hit.world.is_some()
         && construction.selected.is_some();
     if !show {
@@ -173,18 +179,19 @@ fn update_hologram_preview(
         return;
     };
 
-    let base_h = terrain.0.sample_height_at(hit_world.x, hit_world.z);
+    let base_h = terrain.sample_height_at(hit_world.x, hit_world.z);
     let pos_world = Vec3::new(hit_world.x, base_h, hit_world.z);
     let rot = Quat::from_rotation_y(placement_rot.yaw);
     let transform = Transform::from_translation(pos_world)
         .with_rotation(rot)
         .with_scale(spec.render_scale);
 
-    let can_place = objects::system::can_place_non_overlapping(
+    let can_place = objects::system::can_place_non_overlapping_spatial(
         &types.registry,
         object_type,
-        hit_world,
-        q_objects.iter().map(|(t, k)| (k.0, t.translation)),
+        pos_world,
+        &grid,
+        &q_objects,
     );
 
     let chosen_material = if can_place {
@@ -195,7 +202,7 @@ fn update_hologram_preview(
 
     let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
 
-    let scene_offset_local = objects::system::compute_scene_local_offset(spec);
+    let scene_offset_local = spec.scene_offset_local;
 
     let (preview_entity, scene_child) = highlight::update_hologram(
         &mut commands,
@@ -220,16 +227,21 @@ fn update_hologram_preview(
 fn handle_construction_click(
     mut commands: Commands,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
-    hit: Res<CursorHitRes>,
+    hit: Res<CursorHit>,
     toolbar: Res<ToolbarState>,
-    construction: Res<ConstructionStateRes>,
-    placement_rot: Res<PlacementRotationRes>,
-    types: Res<ObjectTypesRes>,
+    construction: Res<ConstructionState>,
+    placement_rot: Res<PlacementRotation>,
+    types: Option<Res<ObjectTypes>>,
     q_objects: Query<(&Transform, &ObjectKind)>,
-    terrain: Res<TerrainWorldRes>,
+    terrain: Res<TerrainWorld>,
     asset_server: Res<AssetServer>,
-    ui_capture: Res<UiInputCaptureRes>,
+    ui_capture: Res<UiInputCapture>,
+    grid: Res<SpatialHashGrid>,
 ) {
+    let Some(types) = types else {
+        return;
+    };
+
     if ui_capture.pointer {
         return;
     }
@@ -238,7 +250,7 @@ fn handle_construction_click(
         return;
     }
 
-    if toolbar.active_tool.as_deref() != Some("construct") {
+    if toolbar.active_tool != Some(ToolId::Construct) {
         return;
     }
 
@@ -246,15 +258,17 @@ fn handle_construction_click(
         let Some(world) = hit.world else {
             return;
         };
-        let can_place = objects::system::can_place_non_overlapping(
+        let base_h = terrain.sample_height_at(world.x, world.z);
+        let position = Vec3::new(world.x, base_h, world.z);
+
+        let can_place = objects::system::can_place_non_overlapping_spatial(
             &types.registry,
             object,
-            world,
-            q_objects.iter().map(|(t, k)| (k.0, t.translation)),
+            position,
+            &grid,
+            &q_objects,
         );
         if can_place {
-            let base_h = terrain.0.sample_height_at(world.x, world.z);
-            let position = Vec3::new(world.x, base_h, world.z);
             let _ = objects::system::spawn_object(
                 &mut commands,
                 &types.registry,
@@ -270,11 +284,15 @@ fn handle_construction_click(
 fn draw_construction_ui(
     mut contexts: EguiContexts,
     toolbar: Res<ToolbarState>,
-    mut construction: ResMut<ConstructionStateRes>,
-    types: Res<ObjectTypesRes>,
+    mut construction: ResMut<ConstructionState>,
+    types: Option<Res<ObjectTypes>>,
     mut action_text: ResMut<ToolbarActionText>,
 ) {
-    if toolbar.active_tool.as_deref() != Some("construct") {
+    let Some(types) = types else {
+        return;
+    };
+
+    if toolbar.active_tool != Some(ToolId::Construct) {
         return;
     }
 

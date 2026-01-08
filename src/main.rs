@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_egui::EguiPlugin;
 
 mod game;
 
@@ -12,8 +13,10 @@ fn main() {
             brightness: 30.0,
             affects_lightmapped_meshes: false,
         })
-        .insert_resource(terrain::types::TerrainConfigRes(
-            terrain::types::TerrainConfig {
+        .add_plugins(DefaultPlugins)
+        .add_plugins(EguiPlugin::default())
+        .add_plugins(GamePlugin {
+            terrain_config: terrain::TerrainConfig {
                 seed: 12345,
                 chunk_size: 32,
                 tile_size: 2.0,
@@ -24,7 +27,6 @@ fn main() {
                 noise_persistence: 0.5,
                 height_scale: 8.0,
             },
-        ))
-        .add_plugins(GamePlugin)
+        })
         .run();
 }

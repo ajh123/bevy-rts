@@ -1,8 +1,14 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ToolId {
+    Construct,
+    Destroy,
+}
+
 #[derive(Resource, Default, Clone, Copy, Debug)]
-pub struct UiInputCaptureRes {
+pub struct UiInputCapture {
     pub pointer: bool,
     pub keyboard: bool,
 }
@@ -13,7 +19,7 @@ pub struct ToolbarRegistry {
 }
 
 pub struct ToolbarTool {
-    pub id: String,
+    pub id: ToolId,
     pub label: String,
     pub order: u32,
     pub key: Option<KeyCode>,
@@ -21,7 +27,7 @@ pub struct ToolbarTool {
 
 #[derive(Resource, Debug, Default)]
 pub struct ToolbarState {
-    pub active_tool: Option<String>,
+    pub active_tool: Option<ToolId>,
 }
 
 #[derive(Resource, Default)]
@@ -42,7 +48,7 @@ pub fn update_toolbar_state_from_hotkeys(
     keys: Res<ButtonInput<KeyCode>>,
     mut toolbar: ResMut<ToolbarState>,
     registry: Res<ToolbarRegistry>,
-    ui_capture: Res<UiInputCaptureRes>,
+    ui_capture: Res<UiInputCapture>,
 ) {
     if ui_capture.keyboard {
         return;
@@ -51,10 +57,10 @@ pub fn update_toolbar_state_from_hotkeys(
     for tool in &registry.tools {
         if let Some(key) = tool.key {
             if keys.just_pressed(key) {
-                if toolbar.active_tool.as_ref() == Some(&tool.id) {
+                if toolbar.active_tool == Some(tool.id) {
                     toolbar.active_tool = None;
                 } else {
-                    toolbar.active_tool = Some(tool.id.clone());
+                    toolbar.active_tool = Some(tool.id);
                 }
             }
         }

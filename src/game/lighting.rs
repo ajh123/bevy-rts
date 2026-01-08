@@ -1,5 +1,15 @@
 use bevy::prelude::*;
 
+use super::StartupSet;
+
+pub struct LightingPlugin;
+
+impl Plugin for LightingPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, setup_sun_light.in_set(StartupSet::Lighting));
+    }
+}
+
 pub fn setup_sun_light(mut commands: Commands) {
     commands.spawn((
         DirectionalLight {

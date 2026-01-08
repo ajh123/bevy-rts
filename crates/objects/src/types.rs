@@ -8,25 +8,12 @@ pub struct ObjectTypeSpec {
     pub name: String,
     /// Path relative to the Bevy asset root (the `assets/` folder).
     pub gltf: String,
-    pub gltf_bounds: Option<GltfBounds>,
     pub render_scale: Vec3,
     pub hover_radius: f32,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct GltfBounds {
-    pub min: Vec3,
-    pub max: Vec3,
-}
-
-impl GltfBounds {
-    pub fn size(&self) -> Vec3 {
-        self.max - self.min
-    }
-
-    pub fn center(&self) -> Vec3 {
-        (self.min + self.max) * 0.5
-    }
+    /// Local translation applied to the rendered scene child.
+    ///
+    /// This must be authored in the object definition file; it is not computed at runtime.
+    pub scene_offset_local: Vec3,
 }
 
 #[derive(Default)]
