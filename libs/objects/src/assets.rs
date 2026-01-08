@@ -13,6 +13,36 @@ pub struct ObjectTypeDefAsset {
     pub scene_offset_local: Vec3,
 }
 
+#[derive(Asset, TypePath, Debug, Clone)]
+pub struct BinaryAsset(pub Vec<u8>);
+
+#[derive(Default)]
+pub struct BinaryAssetLoader;
+
+impl AssetLoader for BinaryAssetLoader {
+    type Asset = BinaryAsset;
+    type Settings = ();
+    type Error = String;
+
+    async fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext<'_>,
+    ) -> Result<Self::Asset, Self::Error> {
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| format!("failed to read asset bytes: {e}"))?;
+        Ok(BinaryAsset(bytes))
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["bin"]
+    }
+}
+
 #[derive(Default)]
 pub struct ObjectTypeDefAssetLoader;
 

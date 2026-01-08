@@ -1,7 +1,6 @@
 use crate::types::{ObjectTypeId, ObjectTypeRegistry, ObjectTypeSpec};
+use bevy::asset::LoadedFolder;
 use bevy::prelude::*;
-use bevy::tasks::{IoTaskPool, Task};
-use bevy::tasks::futures_lite::future;
 use glam::Vec3;
 
 use crate::assets::ObjectTypeDefAsset;
@@ -29,61 +28,62 @@ pub fn setup_object_hovered(mut commands: Commands) {
 }
 
 #[derive(Resource)]
-pub struct ObjectDefDiscoveryTask(pub Task<Result<Vec<String>, String>>);
-
-#[derive(Resource)]
 pub struct ObjectDefHandles {
     pub handles: Vec<Handle<ObjectTypeDefAsset>>,
 }
 
+#[derive(Resource)]
+pub struct ObjectDefsFolder(pub Handle<LoadedFolder>);
+
 pub fn setup_object_types(mut commands: Commands) {
-    let pool = IoTaskPool::get();
-    let task = pool.spawn(async move { discover_object_def_asset_paths("assets/objects") });
-    commands.insert_resource(ObjectDefDiscoveryTask(task));
+    commands.insert_resource(ObjectDefHandles { handles: Vec::new() });
 }
 
 pub fn finish_object_types_load(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     defs: Res<Assets<ObjectTypeDefAsset>>,
-    task: Option<ResMut<ObjectDefDiscoveryTask>>,
+    folders: Res<Assets<LoadedFolder>>,
     handles: Option<Res<ObjectDefHandles>>,
+    folder: Option<Res<ObjectDefsFolder>>,
 ) {
-    if task.is_some() {
-        let Some(mut task) = task else {
-            return;
-        };
-
-        let Some(result) = future::block_on(future::poll_once(&mut task.0)) else {
-            return;
-        };
-
-        commands.remove_resource::<ObjectDefDiscoveryTask>();
-
-        match result {
-            Ok(paths) => {
-                let mut handles = Vec::new();
-                for p in paths {
-                    handles.push(asset_server.load::<ObjectTypeDefAsset>(p));
-                }
-                commands.insert_resource(ObjectDefHandles { handles });
-            }
-            Err(e) => {
-                error!("{e}");
-                commands.insert_resource(make_missing_object_defs());
-            }
-        }
-
-        return;
-    }
-
     let Some(handles) = handles else {
         return;
     };
 
+    // Kick off discovery+loading once, using Bevy's Asset IO (not std::fs, not process CWD).
     if handles.handles.is_empty() {
-        commands.remove_resource::<ObjectDefHandles>();
-        commands.insert_resource(make_missing_object_defs());
+        if folder.is_none() {
+            let folder_handle = asset_server.load_folder("objects");
+            commands.insert_resource(ObjectDefsFolder(folder_handle));
+        }
+
+        let Some(folder) = folder else {
+            return;
+        };
+
+        // Wait for the folder listing to load.
+        let Some(loaded) = folders.get(&folder.0) else {
+            if let Some(state) = asset_server.get_load_state(folder.0.id()) {
+                if matches!(state, bevy::asset::LoadState::Failed(_)) {
+                    error!("failed to load objects folder listing");
+                    commands.remove_resource::<ObjectDefsFolder>();
+                    commands.remove_resource::<ObjectDefHandles>();
+                    commands.insert_resource(make_missing_object_defs());
+                }
+            }
+            return;
+        };
+
+        let mut typed: Vec<Handle<ObjectTypeDefAsset>> = Vec::new();
+        for h in loaded.handles.iter().cloned() {
+            if let Ok(h) = h.try_typed::<ObjectTypeDefAsset>() {
+                typed.push(h);
+            }
+        }
+
+        commands.remove_resource::<ObjectDefsFolder>();
+        commands.insert_resource(ObjectDefHandles { handles: typed });
         return;
     }
 
@@ -307,32 +307,3 @@ fn circles_overlap(a: Vec3, ar: f32, b: Vec3, br: f32) -> bool {
     dx * dx + dz * dz <= r * r
 }
 
-fn discover_object_def_asset_paths(dir: impl AsRef<std::path::Path>) -> Result<Vec<String>, String> {
-    let dir = dir.as_ref();
-    let mut out = Vec::new();
-
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("failed to read object defs dir '{}': {e}", dir.display()))?;
-
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("failed to read object defs dir entry: {e}"))?;
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("ron") {
-            continue;
-        }
-
-        // Convert filesystem path under assets/ into an asset-relative path.
-        let rel = path
-            .strip_prefix("assets")
-            .map_err(|_| format!("object def '{}' is not under assets/", path.display()))?;
-        let mut s = rel.to_string_lossy().to_string();
-        // Bevy asset paths use '/' even on Windows.
-        s = s.replace('\\', "/");
-        if s.starts_with('/') {
-            s.remove(0);
-        }
-        out.push(s);
-    }
-
-    Ok(out)
-}

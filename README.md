@@ -13,7 +13,7 @@ Clone and run (requires Rust and Cargo):
 ```powershell
 git clone https://github.com/ajh123/bevy-rts.git
 cd bevy-rts
-cargo run
+cargo run -p bevy-rts-client
 ```
 
 ## Features

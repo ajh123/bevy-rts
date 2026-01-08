@@ -344,7 +344,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "bevy-rts"
+name = "bevy-rts-client"
 version = "0.1.0"
 dependencies = [
  "bevy",
