@@ -1,10 +1,12 @@
 # Bevy RTS
 
-A basic RTS template using Bevy engine that renders a heightmap divided into chunks, with basic camera controls and an object placement system.
+## Project Goals
 
-## Overview
-
-Bevy RTS is a small real-time strategy (RTS) template built with the Bevy game engine. It renders a heightmap divided into chunks, provides camera controls, and includes an object placement system. The project is modular and data-driven.
+- Build a game-engine framework for RTS games in Rust using Bevy.
+- Implement core RTS features: terrain, object placement, pathfinding, basic AI.
+- Support modding via data-driven RON files and asset packs.
+- Implement a server/client architecture for multiplayer.
+- Push AI driven development to its limits, with only essential human refactoring.
 
 ## Quick start
 
@@ -18,7 +20,7 @@ cargo run -p bevy-rts-client
 
 ## Features
 
-- Chunked heightmap rendering (flat and Perlin generators).
+- Chunked heightmap rendering (Perlin noise).
 - Top-down camera with movement and zoom.
 - Object placement system (freeform + rotational placement).
 - Data-driven tiles and object definitions stored in `assets/*.ron`.
@@ -27,17 +29,8 @@ cargo run -p bevy-rts-client
 
 - Full development timeline: [docs/HISTORY.md](docs/HISTORY.md)
 - Contributing guide: [CONTRIBUTING.md](CONTRIBUTING.md)
-- Quick code entry points:
-	- `src/main.rs` - Bevy app setup
-	- `src/terrain.rs`, `src/terrain_renderer.rs` - terrain logic
-	- `src/object_system.rs`, `src/object_renderer.rs` - object systems
-
-## Architecture
-
-- `terrain` / `terrain_renderer` - chunk generation and mesh creation
-- `object_system` / `object_renderer` - object placement, transforms, rendering
-- `camera` - input-driven camera movement and zoom systems
-- `tile_types`, `assets` - RON-based data definitions
+- Design plan: [docs/plan.md](docs/plan.md)
+- Code reviews: [docs/reviews/](docs/reviews/)
 
 ## Contributing
 
