@@ -6,9 +6,7 @@ use glam::{IVec2, Vec3};
 
 use crate::assets::TileTypesAsset;
 use crate::types::TileTypes;
-use crate::types::{
-    LoadedChunkEntities, TerrainAtlas, TerrainConfig, TerrainViewerWorldXz,
-};
+use crate::types::{LoadedChunkEntities, TerrainAtlas, TerrainConfig, TerrainViewerWorldXz};
 use crate::world::{ChunkMeshData, TerrainAction, TerrainWorld};
 
 #[derive(Component)]
@@ -118,14 +116,8 @@ pub fn stream_chunks(
                     continue;
                 }
 
-                let chunk_entity = spawn_chunk(
-                    &mut commands,
-                    &mut meshes,
-                    &terrain,
-                    &atlas,
-                    &tiles,
-                    coord,
-                );
+                let chunk_entity =
+                    spawn_chunk(&mut commands, &mut meshes, &terrain, &atlas, &tiles, coord);
                 loaded.entities.insert(coord, chunk_entity);
             }
         }

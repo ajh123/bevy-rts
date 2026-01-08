@@ -13,12 +13,15 @@ pub struct TerrainPlugin {
 }
 
 impl Plugin for TerrainPlugin {
-	fn build(&self, app: &mut App) {
-		app.insert_resource(self.config.clone())
-			.init_resource::<types::TerrainViewerWorldXz>()
-			.init_asset::<assets::TileTypesAsset>()
-			.init_asset_loader::<assets::TileTypesAssetLoader>()
-			.add_systems(Startup, render::setup_terrain_renderer)
-			.add_systems(Update, (render::finish_tile_types_load, render::stream_chunks));
-	}
+    fn build(&self, app: &mut App) {
+        app.insert_resource(self.config.clone())
+            .init_resource::<types::TerrainViewerWorldXz>()
+            .init_asset::<assets::TileTypesAsset>()
+            .init_asset_loader::<assets::TileTypesAssetLoader>()
+            .add_systems(Startup, render::setup_terrain_renderer)
+            .add_systems(
+                Update,
+                (render::finish_tile_types_load, render::stream_chunks),
+            );
+    }
 }

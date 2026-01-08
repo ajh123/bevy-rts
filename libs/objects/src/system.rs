@@ -36,7 +36,9 @@ pub struct ObjectDefHandles {
 pub struct ObjectDefsFolder(pub Handle<LoadedFolder>);
 
 pub fn setup_object_types(mut commands: Commands) {
-    commands.insert_resource(ObjectDefHandles { handles: Vec::new() });
+    commands.insert_resource(ObjectDefHandles {
+        handles: Vec::new(),
+    });
 }
 
 pub fn finish_object_types_load(
@@ -174,11 +176,7 @@ pub fn spawn_object(
         .with_scale(spec.render_scale);
 
     let root = commands
-        .spawn((
-            ObjectKind(type_id),
-            root_transform,
-            Visibility::default(),
-        ))
+        .spawn((ObjectKind(type_id), root_transform, Visibility::default()))
         .with_children(|parent| {
             parent.spawn((
                 SceneRoot(scene_handle),
@@ -230,7 +228,8 @@ pub fn can_place_non_overlapping_spatial(
     };
 
     let new_r = new_spec.hover_radius.max(0.1);
-    let candidates = grid.query_candidates(glam::Vec2::new(position_world.x, position_world.z), new_r);
+    let candidates =
+        grid.query_candidates(glam::Vec2::new(position_world.x, position_world.z), new_r);
 
     for e in candidates {
         let Ok((t, k)) = q_objects.get(e) else {
@@ -266,7 +265,8 @@ pub fn update_hovered_object(
 
     let mut best: Option<(Entity, f32)> = None;
 
-    let candidates = grid.query_candidates(glam::Vec2::new(world.x, world.z), types.max_hover_radius);
+    let candidates =
+        grid.query_candidates(glam::Vec2::new(world.x, world.z), types.max_hover_radius);
 
     for entity in candidates {
         let Ok((_e, transform, kind)) = q_objects.get(entity) else {
@@ -306,4 +306,3 @@ fn circles_overlap(a: Vec3, ar: f32, b: Vec3, br: f32) -> bool {
     let r = ar + br;
     dx * dx + dz * dz <= r * r
 }
-

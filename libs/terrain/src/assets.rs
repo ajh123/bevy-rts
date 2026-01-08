@@ -31,10 +31,12 @@ impl AssetLoader for TileTypesAssetLoader {
         let text = std::str::from_utf8(&bytes)
             .map_err(|e| format!("tile types asset was not valid utf-8: {e}"))?;
 
-        let parsed: TileTypesFile = ron::from_str(text)
-            .map_err(|e| format!("failed to parse tile types ron: {e}"))?;
+        let parsed: TileTypesFile =
+            ron::from_str(text).map_err(|e| format!("failed to parse tile types ron: {e}"))?;
 
-        let tile_types = TileTypes { tiles: parsed.tiles };
+        let tile_types = TileTypes {
+            tiles: parsed.tiles,
+        };
         tile_types.validate()?;
 
         Ok(TileTypesAsset(tile_types))

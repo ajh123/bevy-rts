@@ -11,7 +11,10 @@ impl Plugin for CameraPlugin {
         app.insert_resource(TopDownCameraSettings::default())
             .add_systems(Startup, setup_viewer.in_set(StartupSet::Camera))
             .add_systems(Update, top_down_camera_input.in_set(UpdateSet::CameraInput))
-            .add_systems(Update, update_top_down_camera.in_set(UpdateSet::CameraUpdate));
+            .add_systems(
+                Update,
+                update_top_down_camera.in_set(UpdateSet::CameraUpdate),
+            );
     }
 }
 

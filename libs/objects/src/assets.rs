@@ -66,8 +66,8 @@ impl AssetLoader for ObjectTypeDefAssetLoader {
         let text = std::str::from_utf8(&bytes)
             .map_err(|e| format!("object def was not valid utf-8: {e}"))?;
 
-        let def: ObjectTypeDefFile = ron::from_str(text)
-            .map_err(|e| format!("failed to parse object def ron: {e}"))?;
+        let def: ObjectTypeDefFile =
+            ron::from_str(text).map_err(|e| format!("failed to parse object def ron: {e}"))?;
 
         if def.name.trim().is_empty() {
             return Err("object def has empty name".to_string());
@@ -76,7 +76,10 @@ impl AssetLoader for ObjectTypeDefAssetLoader {
             return Err("object def has empty gltf path".to_string());
         }
         if !def.hover_radius.is_finite() || def.hover_radius <= 0.0 {
-            return Err(format!("object def '{}' has invalid hover_radius={}", def.name, def.hover_radius));
+            return Err(format!(
+                "object def '{}' has invalid hover_radius={}",
+                def.name, def.hover_radius
+            ));
         }
 
         Ok(ObjectTypeDefAsset {

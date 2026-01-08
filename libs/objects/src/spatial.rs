@@ -25,7 +25,10 @@ impl Default for SpatialHashGrid {
 impl SpatialHashGrid {
     pub fn cell_of_world(&self, world_xz: Vec2) -> IVec2 {
         let cs = self.cell_size.max(0.001);
-        IVec2::new((world_xz.x / cs).floor() as i32, (world_xz.y / cs).floor() as i32)
+        IVec2::new(
+            (world_xz.x / cs).floor() as i32,
+            (world_xz.y / cs).floor() as i32,
+        )
     }
 
     pub fn insert_or_move(&mut self, entity: Entity, world_pos: Vec3) {

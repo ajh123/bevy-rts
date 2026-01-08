@@ -40,7 +40,6 @@ pub struct TileTypes {
 }
 
 impl TileTypes {
-
     pub fn tile_count_f32(&self) -> f32 {
         self.tiles.len() as f32
     }
