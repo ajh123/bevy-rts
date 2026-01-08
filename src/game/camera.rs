@@ -10,7 +10,10 @@ pub(crate) struct UiInputCaptureRes {
     pub(crate) keyboard: bool,
 }
 
-pub(crate) fn update_ui_input_capture(mut contexts: EguiContexts, mut capture: ResMut<UiInputCaptureRes>) {
+pub(crate) fn update_ui_input_capture(
+    mut contexts: EguiContexts,
+    mut capture: ResMut<UiInputCaptureRes>,
+) {
     let ctx = match contexts.ctx_mut() {
         Ok(ctx) => ctx,
         Err(_) => {
@@ -27,7 +30,6 @@ pub(crate) fn update_ui_input_capture(mut contexts: EguiContexts, mut capture: R
     // Keyboard capture: egui wants keyboard (this is usually true when a text field is active).
     capture.keyboard = ctx.wants_keyboard_input();
 }
-
 
 #[derive(Component)]
 pub struct Viewer;
@@ -117,8 +119,8 @@ pub fn top_down_camera_input(
         if scroll.abs() > 0.0 {
             // Exponential-ish feel, similar to city builder cameras.
             let factor = (1.0 - scroll * settings.zoom_speed).clamp(0.2, 5.0);
-            settings.distance = (settings.distance * factor)
-                .clamp(settings.min_distance, settings.max_distance);
+            settings.distance =
+                (settings.distance * factor).clamp(settings.min_distance, settings.max_distance);
         }
     }
 

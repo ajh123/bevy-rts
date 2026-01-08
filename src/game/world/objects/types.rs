@@ -65,7 +65,6 @@ impl ObjectTypeRegistry {
     }
 }
 
-
 #[derive(Clone, Debug)]
 pub struct FreeformObjectInstance {
     pub type_id: ObjectTypeId,

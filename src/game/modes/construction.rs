@@ -1,13 +1,13 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts, EguiPrimaryContextPass};
+use bevy_egui::{EguiContexts, EguiPrimaryContextPass, egui};
 
+use crate::game::camera::UiInputCaptureRes;
 use crate::game::input::CursorHitRes;
-use crate::game::ui::toolbar::{ToolbarRegistry, ToolbarState, ToolbarTool, ToolbarActionText};
+use crate::game::ui::toolbar::{ToolbarActionText, ToolbarRegistry, ToolbarState, ToolbarTool};
 use crate::game::utils::highlight;
 use crate::game::world::objects::system::{FreeformObjectWorldRes, ObjectTypesRes};
 use crate::game::world::objects::types::ObjectTypeId;
 use crate::game::world::terrain::types::TerrainWorldRes;
-use crate::game::camera::UiInputCaptureRes;
 
 #[derive(Resource, Default)]
 pub struct ConstructionStateRes {
@@ -38,7 +38,10 @@ impl Plugin for ConstructionModePlugin {
         app.init_resource::<PlacementRotationRes>()
             .init_resource::<HologramPreviewRes>()
             .init_resource::<ConstructionStateRes>()
-            .add_systems(Startup, (setup_construction_materials, setup_construction_toolbar))
+            .add_systems(
+                Startup,
+                (setup_construction_materials, setup_construction_toolbar),
+            )
             .add_systems(
                 Update,
                 (
@@ -133,7 +136,9 @@ fn update_hologram_preview(
     children: Query<&Children>,
     mut q_materials: Query<&mut MeshMaterial3d<StandardMaterial>>,
 ) {
-    let show = toolbar.active_tool.as_deref() == Some("construct") && hit.world.is_some() && construction.selected.is_some();
+    let show = toolbar.active_tool.as_deref() == Some("construct")
+        && hit.world.is_some()
+        && construction.selected.is_some();
     if !show {
         if let Some(e) = preview.entity.take() {
             highlight::despawn_recursive(&mut commands, &children, e);
@@ -157,7 +162,12 @@ fn update_hologram_preview(
 
     let base_h = terrain.0.sample_height_at(hit_world.x, hit_world.z);
     let rot = Quat::from_rotation_y(placement_rot.yaw);
-    let rotated_offset = rot * Vec3::new(spec.render_offset.x, spec.render_offset.y, spec.render_offset.z);
+    let rotated_offset = rot
+        * Vec3::new(
+            spec.render_offset.x,
+            spec.render_offset.y,
+            spec.render_offset.z,
+        );
 
     let pos_world = Vec3::new(hit_world.x, base_h, hit_world.z) + rotated_offset;
     let transform = Transform::from_translation(pos_world)
@@ -175,8 +185,9 @@ fn update_hologram_preview(
     };
 
     let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
-    
-    let preview_entity = highlight::update_hologram(&mut commands, preview.entity, scene_handle, transform);
+
+    let preview_entity =
+        highlight::update_hologram(&mut commands, preview.entity, scene_handle, transform);
     preview.entity = Some(preview_entity);
 
     highlight::apply_hologram_material_recursive(
@@ -211,7 +222,9 @@ fn handle_construction_click(
     }
 
     if let Some(object) = construction.selected {
-        let Some(world) = hit.world else { return; };
+        let Some(world) = hit.world else {
+            return;
+        };
         if objects
             .0
             .can_place_non_overlapping(&types.registry, object, world)

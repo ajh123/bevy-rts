@@ -1,7 +1,7 @@
+use super::types::{TerrainConfig, TileTypes};
 use glam::{IVec2, Vec2, Vec3};
 use parrot::Perlin;
 use std::collections::{HashSet, VecDeque};
-use super::types::{TerrainConfig, TileTypes};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TerrainAction {
@@ -62,7 +62,9 @@ impl TerrainWorld {
             self.streaming.desired.clear();
             for dz in -self.config.view_distance_chunks..=self.config.view_distance_chunks {
                 for dx in -self.config.view_distance_chunks..=self.config.view_distance_chunks {
-                    self.streaming.desired.insert(viewer_chunk + IVec2::new(dx, dz));
+                    self.streaming
+                        .desired
+                        .insert(viewer_chunk + IVec2::new(dx, dz));
                 }
             }
 
@@ -126,11 +128,7 @@ impl TerrainWorld {
         sample_height(&self.config, &self.perlin, world_x, world_z)
     }
 
-    pub fn build_chunk_mesh_data(
-        &self,
-        coord: IVec2,
-        tiles: &TileTypes,
-    ) -> ChunkMeshData {
+    pub fn build_chunk_mesh_data(&self, coord: IVec2, tiles: &TileTypes) -> ChunkMeshData {
         let chunk_world_size = self.config.chunk_size as f32 * self.config.tile_size;
         let chunk_origin_x = coord.x as f32 * chunk_world_size;
         let chunk_origin_z = coord.y as f32 * chunk_world_size;

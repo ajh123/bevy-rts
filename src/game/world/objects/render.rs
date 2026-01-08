@@ -1,10 +1,10 @@
 use bevy::prelude::*;
 use bevy::scene::SceneRoot;
 
-use crate::game::world::terrain::types::TerrainWorldRes;
 use crate::game::utils::highlight;
+use crate::game::world::terrain::types::TerrainWorldRes;
 
-use super::system::{ObjectTypesRes, FreeformObjectWorldRes};
+use super::system::{FreeformObjectWorldRes, ObjectTypesRes};
 
 pub fn spawn_objects_for_chunks(
     mut commands: Commands,
@@ -22,14 +22,14 @@ pub fn spawn_objects_for_chunks(
 
         // Manual despawn_descendants
         if let Ok(kids) = children_query.get(root_entity) {
-             for child in kids {
-                 // Use Bevy's built-in recursive despawn if available, otherwise manual
-                 // But commands.entity(e).despawn_recursive() requires DespawnRecursiveExt.
-                 // We can use the one from utils which I have to make public and use here.
-                 // Or just commands.entity(*child).despawn_recursive(); assuming preamble works?
-                 // Let's use our utils one.
-                 highlight::despawn_recursive(&mut commands, &children_query, *child);
-             }
+            for child in kids {
+                // Use Bevy's built-in recursive despawn if available, otherwise manual
+                // But commands.entity(e).despawn_recursive() requires DespawnRecursiveExt.
+                // We can use the one from utils which I have to make public and use here.
+                // Or just commands.entity(*child).despawn_recursive(); assuming preamble works?
+                // Let's use our utils one.
+                highlight::despawn_recursive(&mut commands, &children_query, *child);
+            }
         }
 
         let chunk_size = terrain.0.config.chunk_size as f32;
@@ -71,9 +71,15 @@ pub fn spawn_objects_for_chunks(
                 object_center_z - chunk_origin.z,
             );
 
-            let scene_handle = asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
+            let scene_handle =
+                asset_server.load(GltfAssetLabel::Scene(0).from_asset(spec.gltf.clone()));
             let rot = Quat::from_rotation_y(instance.yaw);
-            let rotated_offset = rot * Vec3::new(spec.render_offset.x, spec.render_offset.y, spec.render_offset.z);
+            let rotated_offset = rot
+                * Vec3::new(
+                    spec.render_offset.x,
+                    spec.render_offset.y,
+                    spec.render_offset.z,
+                );
             to_spawn.push((
                 scene_handle,
                 base_local_pos + rotated_offset,

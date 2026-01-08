@@ -1,10 +1,10 @@
 use bevy::prelude::*;
-use glam::{Vec3 as GVec3};
+use glam::Vec3 as GVec3;
 
 use crate::game::camera::{TopDownCamera, UiInputCaptureRes};
 // We will update this import path once the terrain module is settled
 // Assuming it will be available via crate::game::world::terrain
-use crate::game::world::terrain::TerrainWorldRes; 
+use crate::game::world::terrain::TerrainWorldRes;
 
 #[derive(Resource, Default, Clone, Copy, Debug)]
 pub(crate) struct CursorHitRes {
@@ -61,7 +61,10 @@ pub(crate) fn update_cursor_hit(
     hit.world = Some(GVec3::new(hit_point.x, hit_point.y, hit_point.z));
 }
 
-fn raycast_to_heightfield(terrain: &crate::game::world::terrain::TerrainWorld, ray: Ray3d) -> Option<Vec3> {
+fn raycast_to_heightfield(
+    terrain: &crate::game::world::terrain::TerrainWorld,
+    ray: Ray3d,
+) -> Option<Vec3> {
     // Only handle rays pointing downwards.
     if ray.direction.y >= -1e-4 {
         return None;

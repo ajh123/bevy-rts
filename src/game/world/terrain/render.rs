@@ -1,13 +1,15 @@
-use bevy::prelude::*;
-use bevy::mesh::{Indices, PrimitiveTopology};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::asset::RenderAssetUsages;
+use bevy::mesh::{Indices, PrimitiveTopology};
+use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use glam::{IVec2, Vec2, Vec3};
 
-use crate::game::camera::Viewer; // Ensure camera defines this
-use super::world::{TerrainAction, TerrainWorld, ChunkMeshData};
-use super::types::{TerrainConfigRes, TerrainWorldRes, TileTypesRes, TerrainAtlas, LoadedChunkEntities};
 use super::types::TileTypes;
+use super::types::{
+    LoadedChunkEntities, TerrainAtlas, TerrainConfigRes, TerrainWorldRes, TileTypesRes,
+};
+use super::world::{ChunkMeshData, TerrainAction, TerrainWorld};
+use crate::game::camera::Viewer; // Ensure camera defines this
 
 #[derive(Component)]
 pub struct Chunk {
@@ -43,9 +45,7 @@ pub fn setup_terrain_renderer(
         ..default()
     });
 
-    commands.insert_resource(TerrainAtlas {
-        material,
-    });
+    commands.insert_resource(TerrainAtlas { material });
 }
 
 fn make_atlas_1x_n_image(colors: &[Color]) -> Image {
@@ -139,7 +139,10 @@ fn spawn_chunk(
 }
 
 fn mesh_from_chunk_mesh_data(data: ChunkMeshData) -> Mesh {
-    let mut mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    );
     mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, data.positions);
     mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, data.normals);
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, data.uvs);

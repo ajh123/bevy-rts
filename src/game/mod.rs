@@ -1,7 +1,7 @@
 pub mod camera;
 pub mod input;
-pub mod ui;
-pub mod world;
-pub mod utils;
-pub mod physics;
 pub mod modes;
+pub mod physics;
+pub mod ui;
+pub mod utils;
+pub mod world;

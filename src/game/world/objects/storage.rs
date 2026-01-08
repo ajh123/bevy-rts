@@ -1,10 +1,7 @@
-use std::collections::{HashMap, HashSet};
-use glam::{IVec2, Vec3};
-use super::types::{
-    ObjectHandle, ObjectTypeId, ObjectTypeRegistry,
-    FreeformObjectInstance
-};
+use super::types::{FreeformObjectInstance, ObjectHandle, ObjectTypeId, ObjectTypeRegistry};
 use crate::game::physics::collision;
+use glam::{IVec2, Vec3};
+use std::collections::{HashMap, HashSet};
 
 struct FreeformObjectSlot {
     generation: u32,
@@ -70,11 +67,14 @@ impl FreeformObjectWorld {
 
     pub fn place(&mut self, type_id: ObjectTypeId, position_world: Vec3, yaw: f32) -> ObjectHandle {
         let chunk = self.world_to_chunk_coord(position_world);
-        let handle = self.alloc(FreeformObjectInstance {
-            type_id,
-            position_world,
-            yaw,
-        }, chunk);
+        let handle = self.alloc(
+            FreeformObjectInstance {
+                type_id,
+                position_world,
+                yaw,
+            },
+            chunk,
+        );
 
         self.by_chunk.entry(chunk).or_default().push(handle.index);
         self.dirty_chunks.insert(chunk);
@@ -131,8 +131,12 @@ impl FreeformObjectWorld {
                         None => continue,
                     };
 
-                    let r = collision::collision_radius(spec.gltf_bounds.as_ref(), spec.render_scale, spec.hover_radius);
-                    
+                    let r = collision::collision_radius(
+                        spec.gltf_bounds.as_ref(),
+                        spec.render_scale,
+                        spec.hover_radius,
+                    );
+
                     if !collision::point_in_circle(cursor_world, inst.position_world, r) {
                         continue;
                     }
@@ -168,7 +172,11 @@ impl FreeformObjectWorld {
             return false;
         };
 
-        let new_r = collision::collision_radius(new_spec.gltf_bounds.as_ref(), new_spec.render_scale, new_spec.hover_radius);
+        let new_r = collision::collision_radius(
+            new_spec.gltf_bounds.as_ref(),
+            new_spec.render_scale,
+            new_spec.hover_radius,
+        );
         let center_chunk = self.world_to_chunk_coord(position_world);
 
         // Query a small neighborhood of chunks. We keep this conservative and cheap.
@@ -190,9 +198,18 @@ impl FreeformObjectWorld {
                         continue;
                     };
 
-                    let other_r = collision::collision_radius(spec.gltf_bounds.as_ref(), spec.render_scale, spec.hover_radius);
-                    
-                    if collision::circles_overlap(position_world, new_r, inst.position_world, other_r) {
+                    let other_r = collision::collision_radius(
+                        spec.gltf_bounds.as_ref(),
+                        spec.render_scale,
+                        spec.hover_radius,
+                    );
+
+                    if collision::circles_overlap(
+                        position_world,
+                        new_r,
+                        inst.position_world,
+                        other_r,
+                    ) {
                         return false;
                     }
                 }

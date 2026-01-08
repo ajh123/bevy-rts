@@ -5,10 +5,10 @@ mod game;
 
 use game::camera;
 use game::input;
-use game::ui::toolbar;
-use game::world::terrain;
-use game::world::objects;
 use game::modes;
+use game::ui::toolbar;
+use game::world::objects;
+use game::world::terrain;
 
 fn main() {
     App::new()
@@ -18,17 +18,19 @@ fn main() {
             brightness: 30.0,
             affects_lightmapped_meshes: false,
         })
-        .insert_resource(terrain::types::TerrainConfigRes(terrain::types::TerrainConfig {
-            seed: 12345,
-            chunk_size: 32,
-            tile_size: 2.0,
-            view_distance_chunks: 8,
-            chunk_spawn_budget_per_frame: 32,
-            noise_base_frequency: 0.02,
-            noise_octaves: 4,
-            noise_persistence: 0.5,
-            height_scale: 8.0,
-        }))
+        .insert_resource(terrain::types::TerrainConfigRes(
+            terrain::types::TerrainConfig {
+                seed: 12345,
+                chunk_size: 32,
+                tile_size: 2.0,
+                view_distance_chunks: 8,
+                chunk_spawn_budget_per_frame: 32,
+                noise_base_frequency: 0.02,
+                noise_octaves: 4,
+                noise_persistence: 0.5,
+                height_scale: 8.0,
+            },
+        ))
         .insert_resource(camera::TopDownCameraSettings::default())
         .insert_resource(input::CursorHitRes::default())
         .insert_resource(camera::UiInputCaptureRes::default())
@@ -46,7 +48,7 @@ fn main() {
                 terrain::render::setup_terrain_renderer,
                 objects::system::setup_object_world,
                 objects::system::setup_object_types,
-           )
+            )
                 .chain(),
         )
         .add_systems(
@@ -61,7 +63,7 @@ fn main() {
                 terrain::render::stream_chunks,
                 objects::render::spawn_objects_for_chunks,
             )
-             .chain(),
+                .chain(),
         )
         .add_systems(EguiPrimaryContextPass, toolbar::bottom_toolbar_system)
         .run();

@@ -1,2 +1,2 @@
-pub mod terrain;
 pub mod objects;
+pub mod terrain;

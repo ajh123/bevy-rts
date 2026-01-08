@@ -1,8 +1,8 @@
+use super::world::TerrainWorld;
 use bevy::prelude::*;
-use std::collections::HashMap;
 use glam::IVec2;
 use serde::Deserialize;
-use super::world::TerrainWorld;
+use std::collections::HashMap;
 
 // --- Config ---
 
@@ -48,7 +48,9 @@ impl TileTypes {
         let parsed: TileTypesFile = ron::from_str(&text)
             .map_err(|e| format!("failed to parse tile types file '{}': {e}", path.display()))?;
 
-        let tile_types = Self { tiles: parsed.tiles };
+        let tile_types = Self {
+            tiles: parsed.tiles,
+        };
         tile_types.validate()?;
         Ok(tile_types)
     }

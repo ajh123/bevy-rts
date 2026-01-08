@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContexts};
+use bevy_egui::{EguiContexts, egui};
 
 use crate::game::camera::UiInputCaptureRes;
 
@@ -47,7 +47,7 @@ pub(crate) fn update_toolbar_state_from_hotkeys(
     for tool in &registry.tools {
         if let Some(key) = tool.key {
             if keys.just_pressed(key) {
-                 if toolbar.active_tool.as_ref() == Some(&tool.id) {
+                if toolbar.active_tool.as_ref() == Some(&tool.id) {
                     toolbar.active_tool = None;
                 } else {
                     toolbar.active_tool = Some(tool.id.clone());
@@ -79,10 +79,7 @@ pub(crate) fn bottom_toolbar_system(
     let info_height = 110.0;
 
     egui::Area::new("control_info".into())
-        .fixed_pos(egui::pos2(
-            margin,
-            viewport.height() - info_height - margin,
-        ))
+        .fixed_pos(egui::pos2(margin, viewport.height() - info_height - margin))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             egui::Frame::new()
@@ -91,16 +88,20 @@ pub(crate) fn bottom_toolbar_system(
                 .corner_radius(6)
                 .show(ui, |ui| {
                     ui.set_min_size(egui::vec2(info_width, info_height));
-                    
+
                     if toolbar.active_tool.is_none() {
                         ui.label("Mode: None");
-                        
+
                         let mut sorted_tools: Vec<&ToolbarTool> = registry.tools.iter().collect();
                         sorted_tools.sort_by_key(|t| t.order);
 
                         for tool in sorted_tools.into_iter() {
                             let key_help = tool.key.map(format_key).unwrap_or_default();
-                            let prefix = if key_help.is_empty() { "".to_string() } else { format!("{}: ", key_help) };
+                            let prefix = if key_help.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!("{}: ", key_help)
+                            };
                             ui.label(format!("{}{}", prefix, tool.label));
                         }
                     } else {
@@ -119,7 +120,10 @@ pub(crate) fn bottom_toolbar_system(
         .show(ctx, |ui| {
             egui::Frame::new()
                 .fill(egui::Color32::from_rgb(50, 50, 50))
-                .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 100)))
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    egui::Color32::from_rgb(100, 100, 100),
+                ))
                 .corner_radius(6)
                 .show(ui, |ui| {
                     ui.set_min_size(egui::vec2(toolbar_width, toolbar_height));
@@ -129,16 +133,22 @@ pub(crate) fn bottom_toolbar_system(
                         sorted_tools.sort_by_key(|t| t.order);
 
                         for tool in sorted_tools.iter() {
-                             let is_active = toolbar.active_tool.as_ref() == Some(&tool.id);
-                             let key_hint = tool.key.map(|k| format!(" ({})", format_key(k))).unwrap_or_default();
-                             let label = format!("{}{}", tool.label, key_hint);
-                             if ui.add(egui::Button::new(label).selected(is_active)).clicked() {
-                                 if is_active {
-                                     toolbar.active_tool = None;
-                                 } else {
-                                     toolbar.active_tool = Some(tool.id.clone());
-                                 }
-                             }
+                            let is_active = toolbar.active_tool.as_ref() == Some(&tool.id);
+                            let key_hint = tool
+                                .key
+                                .map(|k| format!(" ({})", format_key(k)))
+                                .unwrap_or_default();
+                            let label = format!("{}{}", tool.label, key_hint);
+                            if ui
+                                .add(egui::Button::new(label).selected(is_active))
+                                .clicked()
+                            {
+                                if is_active {
+                                    toolbar.active_tool = None;
+                                } else {
+                                    toolbar.active_tool = Some(tool.id.clone());
+                                }
+                            }
                         }
                     });
                 });

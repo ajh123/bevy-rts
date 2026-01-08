@@ -3,14 +3,14 @@ use bevy::prelude::*;
 use glam::{IVec2, Mat4, Vec2, Vec3};
 use serde::Deserialize;
 
-use crate::game::world::terrain::types::TerrainConfigRes;
-use crate::game::input::CursorHitRes;
 use crate::game::camera::UiInputCaptureRes;
+use crate::game::input::CursorHitRes;
 use crate::game::ui::toolbar::ToolbarState;
 use crate::game::utils::gltf;
+use crate::game::world::terrain::types::TerrainConfigRes;
 
-use super::types::{ObjectHandle, ObjectTypeId, ObjectTypeRegistry, ObjectTypeSpec, GltfBounds};
 use super::storage::FreeformObjectWorld;
+use super::types::{GltfBounds, ObjectHandle, ObjectTypeId, ObjectTypeRegistry, ObjectTypeSpec};
 
 #[derive(Resource)]
 pub struct FreeformObjectWorldRes(pub(crate) FreeformObjectWorld);
@@ -149,7 +149,10 @@ fn load_object_type_defs_from_dir(
             return Err(format!("object def '{}' has empty name", path.display()));
         }
         if def.gltf.trim().is_empty() {
-            return Err(format!("object def '{}' has empty gltf path", path.display()));
+            return Err(format!(
+                "object def '{}' has empty gltf path",
+                path.display()
+            ));
         }
         defs.push(def);
     }

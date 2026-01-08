@@ -1,12 +1,16 @@
+use crate::game::world::objects::types::GltfBounds;
 use bevy::prelude::*;
 use glam::{Mat4, Vec3};
 use serde_json::Value;
-use crate::game::world::objects::types::GltfBounds;
 
 /// Computes a standard rendering scale, offset, and collision radius from glTF AABB bounds.
-/// 
+///
 /// This is used to normalize models that might be authored at weird scales or offsets.
-pub fn compute_render_params(_tile_size: f32, bounds: Option<GltfBounds>, scale: Vec3) -> (Vec3, Vec3, f32) {
+pub fn compute_render_params(
+    _tile_size: f32,
+    bounds: Option<GltfBounds>,
+    scale: Vec3,
+) -> (Vec3, Vec3, f32) {
     // Use raw glTF units as-authored (no tile-size-based scaling).
     // We still compute a reasonable render offset and hover radius from bounds when available.
     if let Some(b) = bounds {
@@ -99,8 +103,12 @@ pub fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfB
             ))
         };
 
-        let Some(min_v) = read3(min) else { continue; };
-        let Some(max_v) = read3(max) else { continue; };
+        let Some(min_v) = read3(min) else {
+            continue;
+        };
+        let Some(max_v) = read3(max) else {
+            continue;
+        };
 
         local_min = local_min.min(min_v);
         local_max = local_max.max(max_v);
@@ -114,7 +122,10 @@ pub fn try_compute_gltf_bounds_in_parent_space(asset_path: &str) -> Result<GltfB
     let root_transform = try_read_default_scene_root_matrix(&doc).unwrap_or(Mat4::IDENTITY);
     let (min_p, max_p) = transform_aabb(root_transform, local_min, local_max);
 
-    Ok(GltfBounds { min: min_p, max: max_p })
+    Ok(GltfBounds {
+        min: min_p,
+        max: max_p,
+    })
 }
 
 fn try_read_default_scene_root_matrix(doc: &Value) -> Option<Mat4> {
